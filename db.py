@@ -11,7 +11,6 @@ import threading
 import time
 
 from .config import FeedBotConfig
-from .utils import DB_PATH
 
 _GROUP_ENABLED_MIGRATION_KEY = "group_enabled_authorization_v1"
 
@@ -45,11 +44,17 @@ class AsyncDatabase:
 
     # ---- 连接管理 ----
 
-    def open(self) -> None:
-        """打开数据库连接并初始化表结构（同步，由 asyncio.to_thread 调用）。"""
+    def open(self, db_path: str) -> None:
+        """打开数据库连接并初始化表结构（同步，由 asyncio.to_thread 调用）。
+
+        db_path 必传：由 plugin.on_load 传入宿主分配的持久数据目录
+        （ctx.paths.data_dir）下的库文件路径，本层不再自行拼路径。
+        """
+        if not db_path:
+            raise ValueError("db_path 不能为空：应由 plugin.on_load 传入 ctx.paths.data_dir 下的库文件路径")
         # isolation_level=None 关闭 Python 自动事务管理，由代码手动控制 BEGIN/COMMIT/ROLLBACK
         # 避免手动 BEGIN 与 Python 隐式事务冲突导致 OperationalError
-        self._db = sqlite3.connect(DB_PATH, check_same_thread=False, isolation_level=None)
+        self._db = sqlite3.connect(db_path, check_same_thread=False, isolation_level=None)
         self._db.execute("PRAGMA journal_mode=WAL")
         try:
             self._db.execute("BEGIN")

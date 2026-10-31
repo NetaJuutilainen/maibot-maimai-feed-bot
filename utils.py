@@ -11,9 +11,13 @@ from typing import Any
 # 路径常量
 # ---------------------------------------------------------------------------
 
+# 数据文件的正位是宿主为插件分配的持久数据目录（ctx.paths.data_dir =
+# data/plugins/<plugin_id>/），运行时由 plugin.on_load 解析后传给 db 层。
+# 1.4.x 及之前数据写在插件目录内的 data/ 下；下面几个常量只用于
+# on_load 时的一次性旧库搬迁（搬迁后旧文件保留，作为回滚保险）。
 PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(PLUGIN_DIR, "data")
-DB_PATH = os.path.join(DATA_DIR, "feed_bot.db")
+LEGACY_DATA_DIR = os.path.join(PLUGIN_DIR, "data")
+LEGACY_DB_PATH = os.path.join(LEGACY_DATA_DIR, "feed_bot.db")
 
 # ---------------------------------------------------------------------------
 # 辅助工具

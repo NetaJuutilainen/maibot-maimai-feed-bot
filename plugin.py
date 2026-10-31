@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import shutil
 import time
 from typing import Any
 
@@ -17,7 +19,7 @@ from .commands_user import UserCommandsMixin
 from .config import FeedBotConfig, STYLE_CLEAR_ALL_MARKER
 from .db import AsyncDatabase
 from .loops import LoopTasksMixin
-from .utils import DATA_DIR
+from .utils import LEGACY_DB_PATH, PLUGIN_DIR
 
 
 class FeedBotPlugin(
@@ -90,14 +92,56 @@ class FeedBotPlugin(
             ", ".join(sorted(self._enabled_groups)) or "（无）",
         )
 
+    # ---- 数据目录 ----
+
+    def _resolve_data_dir(self) -> str:
+        """解析宿主为本插件分配的持久数据目录（ctx.paths.data_dir）。
+
+        数据按宿主规范存放在 data/plugins/<plugin_id>/（跨重启保留），
+        不再写入插件目录自身。宿主过旧没有 ctx.paths 时回退插件目录内
+        data/（1.4.x 旧行为）并打 warning。
+        """
+        paths = getattr(self.ctx, "paths", None)
+        data_dir = getattr(paths, "data_dir", None)
+        if data_dir:
+            data_dir = str(data_dir)
+        else:
+            data_dir = os.path.join(PLUGIN_DIR, "data")
+            self.ctx.logger.warning(
+                "宿主未提供 ctx.paths.data_dir，数据目录回退到插件目录内 %s（建议升级宿主）",
+                data_dir,
+            )
+        os.makedirs(data_dir, exist_ok=True)
+        return data_dir
+
+    def _migrate_legacy_database(self, data_dir: str) -> str:
+        """把旧版写在插件目录 data/ 下的库搬迁到新数据目录（一次性）。
+
+        仅当新位置没有库、旧位置有库时执行；-wal/-shm 一起复制保证一致性，
+        旧文件保留不删（回滚到旧版插件时仍可读）。返回最终 db 路径。
+        """
+        db_path = os.path.join(data_dir, "feed_bot.db")
+        if os.path.exists(db_path) or not os.path.exists(LEGACY_DB_PATH):
+            return db_path
+        for suffix in ("", "-wal", "-shm"):
+            src = LEGACY_DB_PATH + suffix
+            if os.path.exists(src):
+                shutil.copy2(src, db_path + suffix)
+        self.ctx.logger.info(
+            "投喂插件数据目录已规范化：旧库 %s -> %s（旧文件保留作回滚保险）",
+            LEGACY_DB_PATH,
+            db_path,
+        )
+        return db_path
+
     async def on_load(self) -> None:
         """插件加载时初始化数据目录和数据库。"""
-        import os
-        os.makedirs(DATA_DIR, exist_ok=True)
+        data_dir = self._resolve_data_dir()
+        db_path = self._migrate_legacy_database(data_dir)
 
         # 配置在 on_load 时才可用，此时传给 db
         self.db.config = self.config
-        await asyncio.to_thread(self.db.open)
+        await asyncio.to_thread(self.db.open, db_path)
 
         # 按配置同步群启用状态（白名单模式下既加也减）
         await self._sync_group_scope()
