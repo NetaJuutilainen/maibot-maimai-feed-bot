@@ -12,6 +12,14 @@ STYLE_CLEAR_ALL_MARKER = "__clear_all_styles__"
 # 清除型道具在商店/回复中的展示文案
 STYLE_CLEAR_ALL_LABEL = "清除全部投喂风格"
 
+# 内置清除风格道具：每个启用群自动种一条 🥛牛奶（已存在任意同名行则跳过，
+# 管理员下架是软下架、行仍在，因此不会被重新种回）
+BUILTIN_CLEAR_ITEM_NAME = "牛奶"
+BUILTIN_CLEAR_ITEM_EMOJI = "🥛"
+BUILTIN_CLEAR_ITEM_DESC = "喝一口温牛奶，清掉本群全部投喂风格"
+BUILTIN_CLEAR_ITEM_PRICE = 5
+BUILTIN_CLEAR_ITEM_SATIETY = 5.0
+
 
 class PluginSectionConfig(PluginConfigBase):
     """插件基础配置。"""
@@ -22,7 +30,7 @@ class PluginSectionConfig(PluginConfigBase):
 
     enabled: bool = Field(default=True, description="是否启用投喂插件")
     config_version: str = Field(
-        default="1.5.0",
+        default="1.6.0",
         description="配置版本（由插件自动维护，与插件版本一致）",
         json_schema_extra={"hidden": True, "disabled": True},
     )

@@ -10,7 +10,9 @@ import sqlite3
 import threading
 import time
 
-from .config import FeedBotConfig
+from .config import BUILTIN_CLEAR_ITEM_DESC, BUILTIN_CLEAR_ITEM_EMOJI, BUILTIN_CLEAR_ITEM_NAME
+from .config import BUILTIN_CLEAR_ITEM_PRICE, BUILTIN_CLEAR_ITEM_SATIETY, FeedBotConfig
+from .config import STYLE_CLEAR_ALL_MARKER
 
 _GROUP_ENABLED_MIGRATION_KEY = "group_enabled_authorization_v1"
 
@@ -652,6 +654,34 @@ class AsyncDatabase:
             """,
             (group_id, value, now, now, value, now),
         )
+
+    async def ensure_builtin_clear_item(self, group_id: str) -> bool:
+        """为启用群内置清除风格道具（🥛牛奶），返回是否实际插入。
+
+        幂等：该群已存在任意同名行（含已下架）则跳过——管理员下架是软下架
+        （is_on_sale=0，行仍在），因此下架后不会被重新种回。
+        """
+        if not group_id:
+            return False
+        row = await self.fetchone(
+            "SELECT 1 FROM shop_items WHERE name = ? AND scope = 'group' AND group_id = ?",
+            (BUILTIN_CLEAR_ITEM_NAME, group_id),
+        )
+        if row:
+            return False
+        await self.execute(
+            """
+            INSERT INTO shop_items (name, emoji, description, price, feed_reply_hint,
+                                    category, satiety_bonus, style_prompt,
+                                    style_duration_minutes, scope, group_id,
+                                    is_on_sale, created_by, created_at)
+            VALUES (?, ?, ?, ?, '', '', ?, ?, 0, 'group', ?, 1, 'builtin', ?)
+            """,
+            (BUILTIN_CLEAR_ITEM_NAME, BUILTIN_CLEAR_ITEM_EMOJI, BUILTIN_CLEAR_ITEM_DESC,
+             BUILTIN_CLEAR_ITEM_PRICE, BUILTIN_CLEAR_ITEM_SATIETY,
+             STYLE_CLEAR_ALL_MARKER, group_id, time.time()),
+        )
+        return True
 
     async def find_shop_item(self, item_name: str, group_id: str) -> dict[str, Any] | None:
         """查找道具：优先本群专属，其次全局。"""

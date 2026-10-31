@@ -86,6 +86,14 @@ class FeedBotPlugin(
             if gid not in self._enabled_groups:
                 self._active_styles.pop(gid, None)
                 self._group_to_stream.pop(gid, None)
+        # 为每个启用群内置清除风格道具（🥛牛奶），幂等：已有同名行则跳过
+        try:
+            seeded = [gid for gid in sorted(self._enabled_groups)
+                      if await self.db.ensure_builtin_clear_item(gid)]
+            if seeded:
+                self.ctx.logger.info("投喂插件已为群内置清除风格道具（🥛牛奶）：%s", ", ".join(seeded))
+        except Exception as exc:
+            self.ctx.logger.error(f"内置清除风格道具失败：{exc}")
         self.ctx.logger.info(
             "投喂插件当前启用群（%s）：%s",
             "白名单" if whitelist_mode else "数据库",
