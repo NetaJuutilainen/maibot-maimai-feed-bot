@@ -305,6 +305,24 @@ class UserCommandsMixin:
             await self.ctx.send.text("商店空空如也～等管理员上架道具吧！", stream_id)
             return True, "商店为空", True
 
+        # 图片菜单（WebUI [shop].render_image 可关）；渲染/发送失败一律回退文本
+        render_image = False
+        try:
+            render_image = bool(self.config.shop.render_image)
+        except Exception:
+            render_image = False
+        if render_image:
+            try:
+                from .menu_render import render_shop_menu_base64
+
+                image_b64 = render_shop_menu_base64(
+                    global_items, group_items, max_batch=MAX_BATCH_QUANTITY
+                )
+                await self.ctx.send.image(image_b64, stream_id)
+                return True, "查看商店（图片菜单）", True
+            except Exception as error:
+                self.ctx.logger.warning(f"商店菜单图片渲染/发送失败，回退文本：{error}")
+
         def _item_line(
             name: str,
             emoji: str,

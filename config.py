@@ -30,7 +30,7 @@ class PluginSectionConfig(PluginConfigBase):
 
     enabled: bool = Field(default=True, description="是否启用投喂插件")
     config_version: str = Field(
-        default="1.6.0",
+        default="1.7.0",
         description="配置版本（由插件自动维护，与插件版本一致）",
         json_schema_extra={"hidden": True, "disabled": True},
     )
@@ -216,6 +216,23 @@ class LLMConfig(PluginConfigBase):
         return self.model.strip() or "replyer"
 
 
+class ShopConfig(PluginConfigBase):
+    """商店配置。"""
+
+    __ui_label__ = "商店"
+    __ui_icon__ = "store"
+    __ui_order__ = 7
+
+    render_image: bool = Field(
+        default=True,
+        description=(
+            "`/商店` 以图片形式渲染菜单（道具多时更清爽，含每件道具的完整效果）。"
+            "需要宿主 send.image 能力；关闭或渲染失败时回退文本菜单"
+        ),
+        json_schema_extra={"label": "商店菜单渲染为图片（render_image）"},
+    )
+
+
 class StyleConfig(PluginConfigBase):
     """投喂风格配置。"""
 
@@ -242,4 +259,5 @@ class FeedBotConfig(PluginConfigBase):
     bot_attr: BotAttrConfig = Field(default_factory=BotAttrConfig)
     filter: FilterConfig = Field(default_factory=FilterConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    shop: ShopConfig = Field(default_factory=ShopConfig)
     style: StyleConfig = Field(default_factory=StyleConfig)
