@@ -13,8 +13,7 @@
   "display": {
     "icon": {
       "type": "local",
-      "value": "assets/icon.png",
-      "fallback": "🍚"
+      "value": "assets/icon.png"
     }
   },
   "urls": {
