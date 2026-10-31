@@ -1,0 +1,9 @@
+# 用户数据与本地运行产物 —— 不进仓库
+config.toml
+config_back/
+data/
+__pycache__/
+*.pyc
+.update_backups/
+_backup_*/
+tests/

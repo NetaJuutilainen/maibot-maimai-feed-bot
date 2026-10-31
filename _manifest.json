@@ -1,0 +1,39 @@
+{
+  "manifest_version": 2,
+  "id": "maibot.maimai-feed-bot",
+  "version": "1.4.0",
+  "name": "麦麦要吃那个！",
+  "description": "签到积分+商店道具+投喂Bot+定时求投喂，支持群内商店、投喂后临时说话风格、按群白名单隔离（config 唯一白名单，未列入的群不启用）。",
+  "author": {
+    "name": "NetaJuutilainen",
+    "url": "https://github.com/NetaJuutilainen"
+  },
+  "license": "MIT",
+  "urls": {
+    "repository": "https://github.com/NetaJuutilainen/maibot-maimai-feed-bot",
+    "homepage": "https://github.com/NetaJuutilainen/maibot-maimai-feed-bot",
+    "documentation": "https://github.com/NetaJuutilainen/maibot-maimai-feed-bot/blob/main/README.md",
+    "issues": "https://github.com/NetaJuutilainen/maibot-maimai-feed-bot/issues"
+  },
+  "host_application": {
+    "min_version": "1.0.0",
+    "max_version": "1.3.99"
+  },
+  "sdk": {
+    "min_version": "2.0.0",
+    "max_version": "2.16.99"
+  },
+  "dependencies": [],
+  "capabilities": [
+    "send.text",
+    "llm.generate",
+    "chat.get_group_streams",
+    "config.get"
+  ],
+  "i18n": {
+    "default_locale": "zh-CN",
+    "supported_locales": [
+      "zh-CN"
+    ]
+  }
+}
