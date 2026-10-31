@@ -231,6 +231,15 @@ class ShopConfig(PluginConfigBase):
         ),
         json_schema_extra={"label": "商店菜单渲染为图片（render_image）"},
     )
+    builtin_clear_item: bool = Field(
+        default=False,
+        description=(
+            "开启后每个启用群自动上架一条 🥛牛奶 清除道具（价格 5、饱食度 +5，已有同名道具则跳过）。"
+            "默认关闭——不开启则完全不动既有商店数据；需要时也可手动"
+            "「/投喂管理 群上架 牛奶 5 🥛 …」+「设置清除效果 牛奶」"
+        ),
+        json_schema_extra={"label": "自动内置清除道具牛奶（builtin_clear_item）"},
+    )
 
 
 class StyleConfig(PluginConfigBase):
