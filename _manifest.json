@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "id": "maibot.maimai-feed-bot",
-  "version": "1.7.0",
+  "version": "1.6.0",
   "name": "麦麦要吃那个！",
   "description": "签到积分+商店道具+投喂Bot+定时求投喂，支持群内商店、投喂后临时说话风格、按群白名单隔离（config 唯一白名单，未列入的群不启用）。",
   "author": {
