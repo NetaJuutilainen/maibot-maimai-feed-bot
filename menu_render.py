@@ -2,12 +2,15 @@
 
 仅在宿主运行环境（Windows，自带微软雅黑与 Segoe UI Emoji 彩色字体）下可用；
 字体缺失时抛异常，由调用方回退文本菜单。
+emoji 字体优先使用插件目录 fonts/seguiemj.ttf（可自带新版本，
+覆盖系统旧字体缺 Unicode 11+ 字形的问题），回退系统字体。
 """
 
 from __future__ import annotations
 
 import base64
 import io
+import os
 from typing import Any
 
 try:  # 生产环境走插件配置常量；本地直跑（无 maibot_sdk）时回退同值字面量
@@ -29,33 +32,34 @@ _COLOR_ROW_LINE = "#F0DFC0"
 _COLOR_MAIN = "#4A2F10"
 _COLOR_SUB = "#A07B4F"
 _COLOR_DESC = "#8A6D4A"
-_COLOR_PRICE = "#B45309"
+_COLOR_PRICE = "#9A4A08"
 _COLOR_TAG_CLEAR_BG = "#DDF4E4"
 _COLOR_TAG_CLEAR_FG = "#1A7F37"
 _COLOR_TAG_STYLE_BG = "#FFD9A8"
 _COLOR_TAG_STYLE_FG = "#B45309"
-_COLOR_SAT_POS = "#1A7F37"
-_COLOR_SAT_NEG = "#C2543A"
+_COLOR_SAT_POS = "#1A9E4B"
+_COLOR_SAT_NEG = "#E04B3C"
 
 _font_cache: dict[tuple[str, int], Any] = {}
 
+# 字体查找顺序：插件目录 fonts/（可自带新版 seguiemj，见 .gitignore）→ 系统字体。
+PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
+_FONT_PATHS = {
+    "cn": [os.path.join(PLUGIN_DIR, "fonts", "msyh.ttc"), r"C:\Windows\Fonts\msyh.ttc"],
+    "cnb": [os.path.join(PLUGIN_DIR, "fonts", "msyhbd.ttc"), r"C:\Windows\Fonts\msyhbd.ttc"],
+    "emoji": [os.path.join(PLUGIN_DIR, "fonts", "seguiemj.ttf"), r"C:\Windows\Fonts\seguiemj.ttf"],
+}
+
 
 def _font(key: str, size: int) -> Any:
-    """按 (字体名, 字号) 缓存加载 Windows 自带字体。"""
-    import os
-
-    paths = {
-        "cn": r"C:\Windows\Fonts\msyh.ttc",
-        "cnb": r"C:\Windows\Fonts\msyhbd.ttc",
-        "emoji": r"C:\Windows\Fonts\seguiemj.ttf",
-    }
+    """按 (字体名, 字号) 缓存加载字体。"""
     cache_key = (key, size)
     if cache_key not in _font_cache:
         from PIL import ImageFont
 
-        path = paths[key]
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"渲染菜单需要 Windows 字体：{path}")
+        path = next((p for p in _FONT_PATHS[key] if os.path.exists(p)), None)
+        if path is None:
+            raise FileNotFoundError(f"渲染菜单需要字体：{_FONT_PATHS[key]}")
         kwargs = {"size": size}
         if key == "emoji":
             kwargs["index"] = 0
@@ -77,6 +81,96 @@ def _wrap_by_width(draw: Any, text: str, font: Any, max_w: float) -> list[str]:
     if current:
         lines.append(current)
     return lines or [""]
+
+
+def _is_emoji_cp(cp: int) -> bool:
+    """emoji 字符启发式判定（VS16/keycap 延续前段，见 _split_mixed）。"""
+    if cp in (0xFE0F, 0x20E3):
+        return True
+    if 0x1F000 <= cp <= 0x1FAFF:
+        return True
+    if 0x2600 <= cp <= 0x27BF:
+        return True
+    if 0x2B00 <= cp <= 0x2BFF:
+        return True
+    return False
+
+
+def _split_mixed(text: str) -> list[tuple[bool, str]]:
+    """把文本拆成 (是否emoji, 片段) 列表；VS16/keycap 并入前一段。"""
+    raw: list[list[Any]] = []
+    for ch in text:
+        is_e = _is_emoji_cp(ord(ch))
+        if raw and raw[-1][0] == is_e:
+            raw[-1][1] += ch
+        else:
+            raw.append([is_e, ch])
+    # VS16/keycap 独立成段时并入前段（它只是前一个字符的样式修饰）
+    merged: list[tuple[bool, str]] = []
+    for is_e, t in raw:
+        if is_e and len(t) == 1 and t in ('\ufe0f', '\u20e3') and merged:
+            pe, pt = merged[-1]
+            merged[-1] = (pe, pt + t)
+        else:
+            merged.append((bool(is_e), t))
+    return merged
+
+
+def _mixed_lines(draw: Any, text: str, cn_f: Any, emj_f: Any, max_w: float) -> list[list[tuple[bool, str]]]:
+    """混排逐字换行：返回行列表，每行是 (是否emoji, 片段) 列表。
+
+    展示层微调：紧贴 emoji 的空格跳过不画（emoji 字形自带留白，
+    再叠加空格会出现"奇怪的空隙"）；只影响菜单图片，不改原文。
+    """
+    lines: list[list[tuple[bool, str]]] = []
+    cur: list[tuple[bool, str]] = []
+    cur_w = 0.0
+    chars = list(text)
+    for i, ch in enumerate(chars):
+        # 紧贴 emoji 的空格：前一个或后一个字符是 emoji 时跳过
+        if ch == ' ':
+            prev_e = i > 0 and _is_emoji_cp(ord(chars[i - 1]))
+            next_e = i + 1 < len(chars) and _is_emoji_cp(ord(chars[i + 1]))
+            if prev_e or next_e:
+                continue
+        is_e = _is_emoji_cp(ord(ch))
+        if is_e:
+            # emoji 字形自带右侧留白（advance 比可见图形宽），按可见宽度计量
+            w = draw.textbbox((0, 0), ch, font=emj_f, embedded_color=True)[2]
+        else:
+            w = draw.textlength(ch, font=cn_f)
+        if cur and cur_w + w > max_w:
+            lines.append(cur)
+            cur = []
+            cur_w = 0.0
+        if cur and cur[-1][0] == is_e:
+            cur[-1] = (is_e, cur[-1][1] + ch)
+        else:
+            cur.append((is_e, ch))
+        cur_w += w
+    if cur:
+        lines.append(cur)
+    return lines or [[(False, '')]]
+
+
+def _draw_mixed_line(draw: Any, x: float, y: float, segs: list[tuple[bool, str]],
+                     cn_f: Any, emj_f: Any, fill: str, emj_scale: float = 1.1) -> None:
+    """绘制一行混排片段：文字段用中文字体，emoji 段用彩色 emoji 字体。
+
+    emoji 段绘制后按可见宽度（bbox）推进，消除字形自带右侧留白造成的"空隙"。
+    """
+    cx = x
+    for is_e, t in segs:
+        if is_e:
+            try:
+                draw.text((cx, y), t, font=emj_f, fill=fill, embedded_color=True)
+                bbox = draw.textbbox((cx, y), t, font=emj_f, embedded_color=True)
+                cx = bbox[2]
+                continue
+            except Exception:
+                pass
+        draw.text((cx, y), t, font=cn_f, fill=fill)
+        cx += draw.textlength(t, font=cn_f)
 
 
 def _effect_text(style_prompt: str, style_duration_minutes: int) -> str:
@@ -112,8 +206,8 @@ def render_shop_menu_png(
     f_name = _font("cnb", 30)
     f_desc = _font("cn", 19)
     f_effect = _font("cn", 19)
-    f_price = _font("cnb", 25)
-    f_sat = _font("cn", 17)
+    f_price = _font("cnb", 30)
+    f_sat = _font("cnb", 20)
     f_tag = _font("cnb", 17)
     f_foot = _font("cn", 18)
     f_emoji = _font("emoji", 52)
@@ -149,20 +243,34 @@ def render_shop_menu_png(
     group_start = len(parsed)
     parse(group_items)
 
-    # 量高：逐行 = 名称区(38) + 描述行数*25 + 效果行数*25 + 上下 pad
+    # emoji 区宽度：取所有行 emoji 串的最大渲染宽度（多 emoji 串如 🈲🔞🍆 会很宽，
+    # 统一按最宽对齐，避免压到名称；上限 230 防极端数据拉爆版面）
     probe = Image.new("RGB", (_IMG_W, 10))
     probe_draw = ImageDraw.Draw(probe)
-    text_max_w = _IMG_W - 126 - 170  # 左侧留 emoji+名区，右侧留价格区
+    emoji_w = 72.0
+    for row in parsed:
+        if row["emoji"]:
+            emoji_w = max(emoji_w, probe_draw.textlength(row["emoji"], font=f_emoji))
+    emoji_w = min(emoji_w + 10, 230)
+    name_x = 30 + emoji_w + 16
+
+    # 量高：逐行 = 名称区(38) + 描述行数*25 + 效果行数*25 + 上下 pad（描述/效果按混排折行）
+    text_max_w = _IMG_W - name_x - 175  # 右侧留价格/饱食度区
     heights: list[int] = []
+    desc_segs: list[list[list[tuple[bool, str]]]] = []
+    eff_segs: list[list[list[tuple[bool, str]]]] = []
     for idx, row in enumerate(parsed):
-        desc_lines = _wrap_by_width(probe_draw, row["desc"], f_desc, text_max_w)
-        eff_lines = _wrap_by_width(probe_draw, "效果：" + row["effect"], f_effect, text_max_w)
-        h = _ROW_PAD + 38 + len(desc_lines) * 25 + len(eff_lines) * 25 + 10
+        d_lines = _mixed_lines(probe_draw, row["desc"], f_desc, f_emoji_sm, text_max_w)
+        e_lines = _mixed_lines(probe_draw, "效果：" + row["effect"], f_effect, f_emoji_sm, text_max_w)
+        desc_segs.append(d_lines)
+        eff_segs.append(e_lines)
+        h = _ROW_PAD + 38 + len(d_lines) * 25 + len(e_lines) * 25 + 12
         heights.append(h)
 
-    # 行间分节空隙
+    # 行间分节空隙 + 分节标题高度（两段各 48px，必须计入画布总高，否则末行被裁）
     gaps = 22 if (global_items and group_items) else 0
-    H = _HEAD_H + sum(heights) + gaps + _FOOT_H
+    n_sections = (1 if global_items else 0) + (1 if group_items else 0)
+    H = _HEAD_H + sum(heights) + gaps + 48 * n_sections + _FOOT_H
     img = Image.new("RGB", (_IMG_W, H), _COLOR_BG)
     d = ImageDraw.Draw(img)
 
@@ -192,12 +300,12 @@ def render_shop_menu_png(
             d.rectangle([0, y, _IMG_W, y + h],
                         fill=_COLOR_ROW_A if idx % 2 == 0 else _COLOR_ROW_B)
             d.line([0, y, _IMG_W, y], fill=_COLOR_ROW_LINE, width=1)
-            emoji_at(row["emoji"], 34, y + _ROW_PAD + 6, f_emoji)
+            emoji_at(row["emoji"], 30, y + _ROW_PAD + 4, f_emoji)
             # 名称 + tag
-            d.text((126, y + _ROW_PAD), row["name"], font=f_name, fill=_COLOR_MAIN)
+            d.text((name_x, y + _ROW_PAD), row["name"], font=f_name, fill=_COLOR_MAIN)
             nw = d.textlength(row["name"], font=f_name)
             tw = d.textlength(row["tag"], font=f_tag)
-            tx = 126 + nw + 14
+            tx = name_x + nw + 14
             if row["tagkind"] == "clear":
                 tbg, tfg = _COLOR_TAG_CLEAR_BG, _COLOR_TAG_CLEAR_FG
             elif row["tagkind"] == "style":
@@ -207,26 +315,24 @@ def render_shop_menu_png(
             d.rounded_rectangle([tx, y + _ROW_PAD + 4, tx + tw + 20, y + _ROW_PAD + 32],
                                 radius=14, fill=tbg)
             d.text((tx + 10, y + _ROW_PAD + 9), row["tag"], font=f_tag, fill=tfg)
-            # 描述
-            desc_lines = _wrap_by_width(d, row["desc"], f_desc, text_max_w)
+            # 描述（emoji 混排）
             ty = y + _ROW_PAD + 38
-            for line in desc_lines:
-                d.text((126, ty), line, font=f_desc, fill=_COLOR_DESC)
+            for segs in desc_segs[idx]:
+                _draw_mixed_line(d, name_x, ty, segs, f_desc, f_emoji_sm, _COLOR_DESC)
                 ty += 25
-            # 效果（完整提示词）
-            eff_lines = _wrap_by_width(d, "效果：" + row["effect"], f_effect, text_max_w)
+            # 效果（完整提示词，emoji 混排）
             eff_fg = _COLOR_TAG_CLEAR_FG if row["tagkind"] == "clear" else _COLOR_PRICE
-            for line in eff_lines:
-                d.text((126, ty), line, font=f_effect, fill=eff_fg)
+            for segs in eff_segs[idx]:
+                _draw_mixed_line(d, name_x, ty, segs, f_effect, f_emoji_sm, eff_fg)
                 ty += 25
-            # 价格 + 饱食度（右对齐）
+            # 价格 + 饱食度（右对齐，正绿负红、加大加粗）
             pt = f"{row['price']} 积分"
             pw = d.textlength(pt, font=f_price)
-            d.text((_IMG_W - 40 - pw, y + _ROW_PAD + 2), pt, font=f_price, fill=_COLOR_PRICE)
+            d.text((_IMG_W - 40 - pw, y + _ROW_PAD - 2), pt, font=f_price, fill=_COLOR_PRICE)
             sat = row["sat"]
             st = ("+" if sat >= 0 else "") + (f"{sat:g}") + " 饱食度"
             sw = d.textlength(st, font=f_sat)
-            d.text((_IMG_W - 40 - sw, y + _ROW_PAD + 40), st, font=f_sat,
+            d.text((_IMG_W - 40 - sw, y + _ROW_PAD + 38), st, font=f_sat,
                    fill=_COLOR_SAT_POS if sat >= 0 else _COLOR_SAT_NEG)
             y += h
         return y
