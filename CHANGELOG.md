@@ -5,6 +5,12 @@
 本插件是 [pan-ice/feed-bot](https://github.com/pan-ice/feed-bot)（投喂插件，MIT）的改造版，
 上游基线为 v1.3.0；下方按时间倒序记录 fork 之后的变更。
 
+## 1.6.1 — 2026-11-09
+
+- **兼容声明扩展（无功能变更）**：`host_application.max_version` 1.3.99 → **1.4.99**，
+  `sdk.max_version` 2.16.99 → **2.22.99**，为 MaiBot 1.4.x 宿主预先放行。
+  已核验本插件全部 hook/组件在 1.4.3 源码中健在；1.3.x 用户不受影响。
+
 ## 1.6.0 — 2026-10-31
 
 - 清除道具支持自动内置：WebUI `[shop].builtin_clear_item` 开启后，每个启用群自动上架
