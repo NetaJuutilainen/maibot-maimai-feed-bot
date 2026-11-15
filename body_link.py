@@ -388,7 +388,7 @@ class BodyLinkClient:
             pack_note = f"（剩下 {packed} 份打包留到明天啦）" if packed > 0 else ""
             return f"🫀 身体：真的吃下了 x{take}{extra}{pack_note}"
         if status == "sleeping":
-            return "🫀 身体：🌙 睡着了，这份先收进背包明天吃吧（没有真的吃）"
+            return "🫀 身体：🌙 睡着了，没有真的吃（投喂已照常结算；等她醒了再喂吧）"
         if status == "bac_high":
             return f"🫀 身体：已经醉得不省人事了（BAC {result.get('bac', 0):.2f}），别再灌了（没有真的吃）"
         if status == "full":
@@ -418,7 +418,7 @@ class BodyLinkClient:
                     f"精力 {_num(after.get('energy'), 0.0):.0f}/100。"
                 )
         elif status == "sleeping":
-            lines.append("但你当时正在睡觉，这份投喂没有真的吃下去（对方把道具收进背包留到明天）。请表现出睡意或委婉拒绝。")
+            lines.append("但你当时正在睡觉，这份投喂没有真的吃下去（游戏层已照常结算消耗，身体没有吃到）。请表现出睡意或委婉拒绝，可以约定醒来再吃。")
         elif status == "bac_high":
             lines.append(f"你此刻血酒精浓度 {result.get('bac', 0):.2f}，已经醉得不行，这份被拒绝了。请用醉汉的语气表达喝不动了。")
         elif status == "full":
