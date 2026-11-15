@@ -330,10 +330,11 @@ class WebUIApiMixin:
             "labels": labels,
         }
 
-    @API("webui_item_save", description="WebUI：保存道具（价格/饱食度/emoji/描述 + 身体映射一起存）", version="1")
+    @API("webui_item_save", description="WebUI：保存道具完整信息（名称/价格/emoji/描述/饱食度 + 身体映射）", version="1")
     async def webui_item_save(
         self,
         item_id: int = 0,
+        item_name: str = "",
         price: int = 0,
         satiety_bonus: float = 0.0,
         emoji: str = "",
@@ -343,14 +344,27 @@ class WebUIApiMixin:
         body_grams: float = 0.0,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """整行保存：游戏字段 + 身体映射一次写入。"""
+        """整行保存：道具完整信息 + 身体映射一次写入（改名带同名查重）。"""
         del kwargs
         item_id = int(item_id or 0)
         row = await self.db.fetchone(
-            "SELECT item_id FROM shop_items WHERE item_id = ?", (item_id,)
+            "SELECT name, scope, group_id FROM shop_items WHERE item_id = ?", (item_id,)
         )
         if row is None:
             return {"ok": False, "error": f"道具不存在（item_id={item_id}）"}
+        old_name, scope, group_id = str(row[0]), str(row[1]), str(row[2])
+
+        name = str(item_name or "").strip() or old_name
+        if len(name) > 40:
+            return {"ok": False, "error": "道具名过长（≤40 字）"}
+        if name != old_name:
+            dup = await self.db.fetchone(
+                "SELECT 1 FROM shop_items WHERE name = ? AND scope = ? AND group_id = ? AND is_on_sale = 1 AND item_id != ?",
+                (name, scope, group_id, item_id),
+            )
+            if dup:
+                return {"ok": False, "error": f"同作用域已有同名在售道具「{name}」"}
+
         try:
             price = int(price)
         except (TypeError, ValueError):
@@ -384,15 +398,16 @@ class WebUIApiMixin:
         await self.db.execute_commit(
             """
             UPDATE shop_items
-            SET price = ?, satiety_bonus = ?, emoji = ?, description = ?,
+            SET name = ?, price = ?, satiety_bonus = ?, emoji = ?, description = ?,
                 body_food = ?, body_kind = ?, body_grams = ?
             WHERE item_id = ?
             """,
-            (price, sat, emoji, desc, word, kind, grams, item_id),
+            (name, price, sat, emoji, desc, word, kind, grams, item_id),
         )
         return {
             "ok": True,
             "item_id": item_id,
+            "name": name,
             "body_food": word,
             "body_kind": kind,
             "body_grams": grams,
