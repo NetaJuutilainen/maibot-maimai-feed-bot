@@ -555,7 +555,7 @@ class UserCommandsMixin:
         # 在事务中原子完成：校验库存 + 扣背包 + 更新饱食度和投喂记录
         def _feed_tx(
             cursor: Any,
-        ) -> tuple[str, int, float, float, int, str, str, str, float, str, int] | None:
+        ) -> tuple[str, int, float, float, int, str, str, str, float, str, int, str, str] | None:
             now_ts = time.time()
 
             # 1. 在事务内读取库存和道具信息，避免并发投喂产生超扣
@@ -563,7 +563,8 @@ class UserCommandsMixin:
                 """
                 SELECT inv.item_id, inv.quantity, si.name, si.emoji,
                        si.feed_reply_hint, si.satiety_bonus,
-                       si.style_prompt, si.style_duration_minutes
+                       si.style_prompt, si.style_duration_minutes,
+                       si.body_food, si.body_kind
                 FROM user_inventory inv
                 JOIN shop_items si ON inv.item_id = si.item_id
                 WHERE inv.user_id = ? AND si.name = ? AND inv.quantity > 0
@@ -572,9 +573,9 @@ class UserCommandsMixin:
             )
             item_row = cursor.fetchone()
             if item_row is None:
-                return ("missing", 0, 0.0, 0.0, 0, "", "", "", 0.0, "", 0)
+                return ("missing", 0, 0.0, 0.0, 0, "", "", "", 0.0, "", 0, "", "")
 
-            item_id, inventory_quantity, name, emoji, reply_hint, satiety_bonus, style_prompt, style_duration_minutes = item_row
+            item_id, inventory_quantity, name, emoji, reply_hint, satiety_bonus, style_prompt, style_duration_minutes, body_food, body_kind = item_row
             if inventory_quantity < requested_quantity:
                 return (
                     "insufficient",
@@ -588,6 +589,8 @@ class UserCommandsMixin:
                     satiety_bonus,
                     style_prompt,
                     style_duration_minutes,
+                    body_food,
+                    body_kind,
                 )
 
             # 2. 获取当前饱食度（含衰减补偿）
@@ -610,12 +613,17 @@ class UserCommandsMixin:
             else:
                 current_satiety = self.config.bot_attr.initial_satiety
 
-            # 3. 正饱食度道具只消耗当前还能吃下的数量
+            # 3. 正饱食度道具只消耗当前还能吃下的数量。
+            #    带身体映射的道具跳过数字层满判定与容量截断：「能不能吃」由身体门卫决定
+            #    （睡着/胃容量/BAC），未映射道具把数字刷满也不挡联动道具进身体
             if satiety_bonus > 0:
-                if current_satiety >= 100:
+                if current_satiety >= 100 and not body_food:
                     raise _Rollback()
-                capacity_quantity = math.ceil((100.0 - current_satiety) / satiety_bonus)
-                consumed_quantity = min(requested_quantity, capacity_quantity)
+                if body_food:
+                    consumed_quantity = requested_quantity
+                else:
+                    capacity_quantity = math.ceil((100.0 - current_satiety) / satiety_bonus)
+                    consumed_quantity = min(requested_quantity, capacity_quantity)
             else:
                 consumed_quantity = requested_quantity
 
@@ -687,6 +695,8 @@ class UserCommandsMixin:
                 satiety_bonus,
                 style_prompt,
                 style_duration_minutes,
+                body_food,
+                body_kind,
             )
 
         result = await self.db.run_in_transaction(_feed_tx)
@@ -695,7 +705,7 @@ class UserCommandsMixin:
             await self.ctx.send.text("我已经吃饱了，吃不下啦～等饿一点再喂我吧！", stream_id)
             return False, "饱食度已满", True
 
-        status, value, current_satiety, new_satiety, record_id, name, emoji, reply_hint, satiety_bonus, style_prompt, style_duration_minutes = result
+        status, value, current_satiety, new_satiety, record_id, name, emoji, reply_hint, satiety_bonus, style_prompt, style_duration_minutes, body_food, body_kind = result
         if status == "missing":
             await self.ctx.send.text(
                 f"你没有「{item_name}」哦～去 /商店 购买或检查 /背包", stream_id
@@ -732,6 +742,43 @@ class UserCommandsMixin:
                     max_n = 3
                 style_note = f"\n（投喂效果已达上限 {max_n} 个，本次风格未生效）"
 
+        # 身体联动（可选，[linkage].body_enabled）：映射道具投喂 → 门卫 → log_meal 真的吃进身体。
+        # 门卫拒收/降级不影响游戏层结算（道具已消耗、饱食度已记），只在回复里说明身体实况
+        body_result: dict[str, Any] | None = None
+        body_line = ""
+        body_prompt = ""
+        if consumed_quantity > 0 and self._body_link.body_enabled() and body_food:
+            try:
+                body_result = await self._body_link.feed_to_body(
+                    word=body_food,
+                    kind=body_kind or "snack",
+                    servings=consumed_quantity,
+                    note=f"群友{nickname or user_id}投喂",
+                    request_id=f"feed-{record_id}",
+                )
+            except Exception as exc:  # noqa: BLE001 — 联动失败绝不打断投喂主流程
+                body_result = {"status": "error", "error": str(exc)}
+            body_line = self._body_link.describe_feed_result(body_result, consumed_quantity)
+            body_prompt = self._body_link.feed_prompt_note(body_result, f"{emoji}{name}")
+            self.ctx.logger.info(
+                "身体联动结算：%s x%s（映射→%s/%s）status=%s",
+                name,
+                consumed_quantity,
+                body_food,
+                body_kind or "snack",
+                body_result.get("status"),
+            )
+
+        # 麦生活联动（可选，独立开关）：投喂成功塞一个主动分享契机（可能引发私聊主动消息）
+        if consumed_quantity > 0 and self._body_link.mai_life_enabled():
+            try:
+                await self._body_link.notify_mai_life_feeded(
+                    nickname or user_id,
+                    f"{emoji}{name} x{consumed_quantity}",
+                )
+            except Exception as exc:
+                self.ctx.logger.debug(f"麦生活契机推送失败: {exc}")
+
         # 生成回复（在事务外，不影响数据一致性）
         recent_feeds = await self.db.execute(
             """
@@ -753,6 +800,7 @@ class UserCommandsMixin:
             satiety_after=new_satiety,
             satiety_bonus=satiety_change,
             recent_feeds=recent_feeds,
+            body_prompt=body_prompt,
         )
 
         # 按记录 ID 精确更新本次投喂回复
@@ -768,9 +816,10 @@ class UserCommandsMixin:
             if truncated
             else f"x{consumed_quantity}"
         )
+        suffix = (f"\n{body_line}" if body_line else "") + style_note
         await self.ctx.send.text(
             f"{nickname or user_id} 投喂了 {display_item} {quantity_note} 给我～"
-            f"饱食度 {satiety_change:+.0f}（{new_satiety:.0f}/100）\n{reply}{style_note}",
+            f"饱食度 {satiety_change:+.0f}（{new_satiety:.0f}/100）\n{reply}{suffix}",
             stream_id,
         )
         return True, f"投喂{name} x{consumed_quantity}", True
@@ -849,6 +898,16 @@ class UserCommandsMixin:
             desc = "好饿好饿！快投喂我！"
 
         msg = f"🍖 当前饱食度（本群）：{satiety:.0f}/100 — {desc}"
+
+        # 身体联动（可选）：追加真实身体状态一行；联动关闭时输出与旧版完全一致
+        if self._body_link.body_enabled():
+            try:
+                state = await self._body_link.get_state()
+                if state:
+                    msg += f"\n{self._body_link.describe_state(state)}"
+            except Exception:
+                pass
+
         await self.ctx.send.text(msg, stream_id)
         return True, "饱食度", True
 

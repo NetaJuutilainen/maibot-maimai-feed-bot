@@ -366,6 +366,20 @@ class AsyncDatabase:
         except sqlite3.OperationalError:
             pass  # 列已存在
 
+        # 迁移：添加身体映射列（道具 → 身体食物词 + 进身类型；空 = 纯游戏道具，不进身体）
+        try:
+            self._db.execute(
+                "ALTER TABLE shop_items ADD COLUMN body_food TEXT NOT NULL DEFAULT ''"
+            )
+        except sqlite3.OperationalError:
+            pass  # 列已存在
+        try:
+            self._db.execute(
+                "ALTER TABLE shop_items ADD COLUMN body_kind TEXT NOT NULL DEFAULT ''"
+            )
+        except sqlite3.OperationalError:
+            pass  # 列已存在
+
     def _migrate_group_enabled_authorization(self) -> None:
         """一次性将旧版 enabled 占位值迁移为真实群授权状态。"""
         assert self._db is not None
@@ -732,6 +746,45 @@ class AsyncDatabase:
             "scope": row[10],
             "group_id": row[11],
         }
+
+    # ---- 身体映射（联动） ----
+
+    async def set_item_body_mapping(
+        self, item_id: int, body_food: str, body_kind: str = ""
+    ) -> None:
+        """写入/清除某个道具的身体映射（body_food 空串 = 解除映射，恢复纯游戏道具）。"""
+        await self.execute_commit(
+            "UPDATE shop_items SET body_food = ?, body_kind = ? WHERE item_id = ?",
+            (str(body_food or "").strip(), str(body_kind or "").strip(), int(item_id)),
+        )
+
+    async def get_body_mapping_overview(self, group_id: str) -> list[dict[str, Any]]:
+        """列出在售道具的身体映射现状（全局 + 指定群专属），供 /投喂管理 映射列表。"""
+        rows = await self.execute(
+            """
+            SELECT item_id, name, emoji, scope, group_id, satiety_bonus,
+                   body_food, body_kind
+            FROM shop_items
+            WHERE is_on_sale = 1 AND (scope = 'global' OR (scope = 'group' AND group_id = ?))
+            ORDER BY scope DESC, name
+            """,
+            (group_id or "",),
+        )
+        overview: list[dict[str, Any]] = []
+        for row in rows or []:
+            overview.append(
+                {
+                    "item_id": row[0],
+                    "name": row[1],
+                    "emoji": row[2],
+                    "scope": row[3],
+                    "group_id": row[4],
+                    "satiety_bonus": row[5],
+                    "body_food": row[6] or "",
+                    "body_kind": row[7] or "",
+                }
+            )
+        return overview
 
     # ---- 群管理员持久化 ----
 

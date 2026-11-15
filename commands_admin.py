@@ -1074,7 +1074,192 @@ class AdminCommandsMixin:
             "/投喂管理 授权 <群号> <QQ号>",
             "/投喂管理 取消授权 <群号> <QQ号>",
             "/投喂管理 群列表",
+            "",
+            "【身体联动 · 群管理员·群内 / Bot管理员·私聊】",
+            "/投喂管理 映射 <道具名> [食物词] [meal|snack|drink]",
+            "/投喂管理 解除映射 <道具名>",
+            "/投喂管理 映射列表",
         ]
 
         await self.ctx.send.text("\n".join(lines), stream_id)
         return True, "投喂管理规则", True
+
+    # ---- 身体映射（联动） ----
+
+    _BODY_KIND_SET = ("meal", "snack", "drink")
+
+    async def _resolve_mapping_target(
+        self, item_name: str, group_id: str, user_id: str
+    ) -> tuple[dict[str, Any] | None, str]:
+        """解析映射命令的目标道具并校验权限。
+
+        返回 (道具dict, 错误信息)；成功时错误信息为空串。
+        权限规则：群道具由该群管理员（或Bot管理员）管理，全局道具仅Bot管理员。
+        """
+        item = await self.db.find_shop_item(item_name, group_id)
+        if item is None:
+            return None, f"找不到在售道具「{item_name}」（/商店 里没有）"
+        is_bot_admin = self._is_bot_admin(user_id)
+        if item.get("scope") == "global" and not is_bot_admin:
+            return None, "全局道具只有 Bot 管理员才能映射"
+        return item, ""
+
+    @Command(
+        "admin_body_map",
+        description="把道具映射到身体食物词（联动：投喂后真的吃进身体）",
+        pattern=(
+            r"^/投喂管理\s+映射\s+(?P<item_name>\S+)"
+            r"(?:\s+(?P<food_word>\S+))?(?:\s+(?P<kind>meal|snack|drink))?\s*$"
+        ),
+    )
+    async def handle_admin_body_map(
+        self,
+        stream_id: str = "",
+        user_id: str = "",
+        group_id: str = "",
+        **kwargs: Any,
+    ) -> tuple[bool, str, bool]:
+        """处理 /投喂管理 映射 命令。
+
+        不带食物词 → 返回身体词表的候选词（模糊匹配道具名）；
+        带食物词   → 本地按身体的解析语义校验，通过才写入。
+        """
+        matched_groups = kwargs.get("matched_groups")
+        if not isinstance(matched_groups, dict):
+            matched_groups = {}
+        item_name = str(matched_groups.get("item_name") or "").strip()
+        food_word = str(matched_groups.get("food_word") or "").strip()
+        kind = str(matched_groups.get("kind") or "").strip().lower()
+
+        if not user_id:
+            return False, "无法获取用户信息", True
+        if group_id:
+            if not await self._is_group_admin(group_id, user_id):
+                await self.ctx.send.text("只有管理员才能设置身体映射", stream_id)
+                return False, "非管理员", True
+        elif not self._is_bot_admin(user_id):
+            await self.ctx.send.text("只有Bot管理员才能设置身体映射", stream_id)
+            return False, "非管理员", True
+        if not item_name:
+            await self.ctx.send.text(
+                "用法：/投喂管理 映射 <道具名> [食物词] [meal|snack|drink]\n"
+                "（食物词留空时返回候选；kind 留空默认 snack，饮品建议 drink）",
+                stream_id,
+            )
+            return False, "参数缺失", True
+        if kind and kind not in self._BODY_KIND_SET:
+            await self.ctx.send.text("类型只支持 meal / snack / drink", stream_id)
+            return False, "类型无效", True
+
+        item, err = await self._resolve_mapping_target(item_name, group_id, user_id)
+        if item is None:
+            await self.ctx.send.text(err, stream_id)
+            return False, err, True
+
+        # 拉词表（TTL 缓存；身体不在跑时 candidates 返回空、resolve 允许存词待校验）
+        await self._body_link.foods()
+
+        if not food_word:
+            tips = self._body_link.candidates(item_name, limit=5)
+            lines = [f"🫀 「{item_name}」的身体映射候选（取自身体食物词表）："]
+            lines += [f"  {i+1}. {w}" for i, w in enumerate(tips)] if tips else ["  （词表里没有相近的——可以直接写中文食物名，如：米饭 / 牛奶 / 啤酒）"]
+            lines.append("用法：/投喂管理 映射 {} <食物词> [meal|snack|drink]".format(item_name))
+            await self.ctx.send.text("\n".join(lines), stream_id)
+            return True, "映射候选", True
+
+        # 带食物词：本地校验（与身体解析语义一致）
+        resolved = self._body_link.resolve(food_word)
+        label = ""
+        if resolved and self._body_link._foods:
+            label = self._body_link._foods["labels"].get(resolved, resolved)
+        await self.db.set_item_body_mapping(item["item_id"], food_word, kind)
+        valid = "✓ 身体可解析" if resolved else "⚠ 词表暂认不出（身体不在跑或词未收录；投喂时会再校验）"
+        display = f"{item.get('emoji', '')}{item['name']}"
+        await self.ctx.send.text(
+            f"✅ 「{display}」→ 身体食物「{food_word}」"
+            f"（解析为 {label or food_word}，类型 {kind or 'snack'}）\n{valid}",
+            stream_id,
+        )
+        return True, f"映射{item['name']}→{food_word}", True
+
+    @Command(
+        "admin_body_unmap",
+        description="解除道具的身体映射（恢复纯游戏道具）",
+        pattern=r"^/投喂管理\s+解除映射\s+(?P<item_name>\S+)\s*$",
+    )
+    async def handle_admin_body_unmap(
+        self,
+        stream_id: str = "",
+        user_id: str = "",
+        group_id: str = "",
+        **kwargs: Any,
+    ) -> tuple[bool, str, bool]:
+        """处理 /投喂管理 解除映射 命令。"""
+        matched_groups = kwargs.get("matched_groups")
+        if not isinstance(matched_groups, dict):
+            matched_groups = {}
+        item_name = str(matched_groups.get("item_name") or "").strip()
+
+        if not user_id:
+            return False, "无法获取用户信息", True
+        if group_id:
+            if not await self._is_group_admin(group_id, user_id):
+                await self.ctx.send.text("只有管理员才能解除身体映射", stream_id)
+                return False, "非管理员", True
+        elif not self._is_bot_admin(user_id):
+            await self.ctx.send.text("只有Bot管理员才能解除身体映射", stream_id)
+            return False, "非管理员", True
+
+        item, err = await self._resolve_mapping_target(item_name, group_id, user_id)
+        if item is None:
+            await self.ctx.send.text(err, stream_id)
+            return False, err, True
+
+        await self.db.set_item_body_mapping(item["item_id"], "", "")
+        display = f"{item.get('emoji', '')}{item['name']}"
+        await self.ctx.send.text(f"✅ 「{display}」已解除身体映射，恢复为纯游戏道具", stream_id)
+        return True, f"解除映射{item['name']}", True
+
+    @Command(
+        "admin_body_map_list",
+        description="查看全部在售道具的身体映射现状",
+        pattern=r"^/投喂管理\s+映射列表\s*$",
+    )
+    async def handle_admin_body_map_list(
+        self,
+        stream_id: str = "",
+        user_id: str = "",
+        group_id: str = "",
+        **kwargs: Any,
+    ) -> tuple[bool, str, bool]:
+        """处理 /投喂管理 映射列表 命令：全局 + 本群道具的映射与校验标记。"""
+        del kwargs
+        if not user_id:
+            return False, "无法获取用户信息", True
+        if group_id:
+            if not await self._is_group_admin(group_id, user_id):
+                await self.ctx.send.text("只有管理员才能查看映射列表", stream_id)
+                return False, "非管理员", True
+        elif not self._is_bot_admin(user_id):
+            await self.ctx.send.text("只有Bot管理员才能查看映射列表", stream_id)
+            return False, "非管理员", True
+
+        overview = await self.db.get_body_mapping_overview(group_id)
+        await self._body_link.foods()
+
+        lines = ["🫀 身体映射列表（✓=身体可解析，✗=暂认不出）"]
+        mapped = 0
+        for entry in overview:
+            scope_tag = "全局" if entry["scope"] == "global" else f"群{entry['group_id']}"
+            display = f"{entry['emoji']}{entry['name']}" if entry["emoji"] else entry["name"]
+            word = entry["body_food"]
+            if not word:
+                continue
+            mapped += 1
+            ok = "✓" if self._body_link.resolve(word) else "✗"
+            kind = entry["body_kind"] or "snack"
+            lines.append(f"  {ok} {display} → {word}（{kind}）[{scope_tag}]")
+        unmapped = len(overview) - mapped
+        lines.append(f"共 {len(overview)} 件在售道具：已映射 {mapped}，未映射 {unmapped}（未映射 = 纯游戏道具，不影响身体）")
+        await self.ctx.send.text("\n".join(lines), stream_id)
+        return True, "映射列表", True

@@ -30,7 +30,7 @@ class PluginSectionConfig(PluginConfigBase):
 
     enabled: bool = Field(default=True, description="是否启用投喂插件")
     config_version: str = Field(
-        default="1.6.1",
+        default="1.7.0",
         description="配置版本（由插件自动维护，与插件版本一致）",
         json_schema_extra={"hidden": True, "disabled": True},
     )
@@ -259,6 +259,60 @@ class StyleConfig(PluginConfigBase):
     )
 
 
+class LinkageConfig(PluginConfigBase):
+    """跨插件联动配置（麦麦身体 / 麦生活，均为可选，默认全关）。"""
+
+    __ui_label__ = "跨插件联动"
+    __ui_icon__ = "activity"
+    __ui_order__ = 8
+
+    body_enabled: bool = Field(
+        default=False,
+        description=(
+            "与「麦麦身体」插件联动（需要服务器已安装 maibot-body-emulator v1.2.0+）。"
+            "开启后：已映射的道具投喂会真的写进身体（血糖/胃容量/酒精…），"
+            "投喂回复与 /饱食度 会附带真实身体状态，求投喂文案参考真实饥饿感。"
+            "关闭时一切行为与旧版完全一致"
+        ),
+        json_schema_extra={"label": "联动麦麦身体（body_enabled）"},
+    )
+    body_plugin_id: str = Field(
+        default="maibot-body-emulator",
+        description="麦麦身体的插件 ID（一般不用改）",
+    )
+    mai_life_enabled: bool = Field(
+        default=False,
+        description=(
+            "与「麦生活」插件联动（可选，独立于身体联动）。开启后：每次成功投喂会给麦生活"
+            "塞一条「主动聊聊这事」的契机（可能引发私聊主动消息），求投喂文案会参考麦生活的"
+            "饥饿/心情/精力。需要麦生活 v1.26+"
+        ),
+        json_schema_extra={"label": "联动麦生活（mai_life_enabled）"},
+    )
+    mai_life_plugin_id: str = Field(
+        default="maibot-community.mai-life",
+        description="麦生活的插件 ID（一般不用改）",
+    )
+    max_servings_per_feed: int = Field(
+        default=3,
+        description="单次投喂最多写进身体的份数（防跨群连投灌爆一副胃；多余份数由回复文案圆场）",
+        json_schema_extra={"label": "单次进身上限（max_servings_per_feed）"},
+    )
+    max_bac: float = Field(
+        default=0.25,
+        description=(
+            "血酒精浓度（BAC）拒收阈值 g/L：达到即拒收酒类投喂（「已经醉得不省人事」），"
+            "0 表示不设限。正常醉酒玩法远低于此值"
+        ),
+        json_schema_extra={"label": "BAC 拒收阈值（max_bac）"},
+    )
+    food_cache_minutes: float = Field(
+        default=60.0,
+        description="身体食物词表（311 种 + 473 别名）的缓存时长（分钟）",
+        json_schema_extra={"label": "词表缓存时长（food_cache_minutes）"},
+    )
+
+
 class FeedBotConfig(PluginConfigBase):
     """投喂插件配置。"""
 
@@ -270,3 +324,4 @@ class FeedBotConfig(PluginConfigBase):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     shop: ShopConfig = Field(default_factory=ShopConfig)
     style: StyleConfig = Field(default_factory=StyleConfig)
+    linkage: LinkageConfig = Field(default_factory=LinkageConfig)

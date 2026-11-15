@@ -178,6 +178,16 @@ class LoopTasksMixin:
                                         "请用1-2句简短的语气向群友们撒娇求投喂，可以包含emoji。",
                                         "不要重复之前的求喂方式，要多样化。严格遵循你的表达风格。",
                                     ]
+                                    # 身体/麦生活联动（可选）：把真实状态注入求喂文案，
+                                    # 让她「真的饿了才喊」。失败静默，回退纯游戏文案
+                                    try:
+                                        flavor = await self._body_link.seek_flavor()
+                                        if flavor:
+                                            seek_prompt_parts.append(
+                                                f"你的真实状态（联动数据，请自然融入，不要逐字复述）：{flavor}"
+                                            )
+                                    except Exception:
+                                        pass
                                     try:
                                         personality = await self.ctx.config.get("personality.personality", "")
                                         reply_style = await self.ctx.config.get("personality.reply_style", "")
@@ -286,6 +296,7 @@ class LoopTasksMixin:
         satiety_after: float,
         satiety_bonus: float,
         recent_feeds: list[tuple[Any, ...]],
+        body_prompt: str = "",
     ) -> str:
         """根据投喂上下文生成个性化回复。"""
         if not self.config.llm.enabled:
@@ -328,6 +339,12 @@ class LoopTasksMixin:
             prompt_parts.append(f"投喂提示：{safe_hint}")
         if safe_recent:
             prompt_parts.append(f"最近被投喂了：{safe_recent}")
+        if body_prompt:
+            # 身体联动（可选）：真实的吃后状态注入，让她「真的感觉到」吃下去的东西
+            prompt_parts.append(
+                "【身体真实状态（联动仿真数据）】\n"
+                + _sanitize_prompt_input(body_prompt, max_len=600)
+            )
         prompt_parts.append("请用简短的语气回应这次投喂，1-2句话即可，可以包含emoji。不要重复之前说过的话。严格遵循你的表达风格。")
 
         prompt = "\n".join(prompt_parts)

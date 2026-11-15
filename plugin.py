@@ -14,6 +14,7 @@ from typing import Any
 from maibot_sdk import HookHandler, MaiBotPlugin
 from maibot_sdk.types import HookMode, HookOrder
 
+from .body_link import BodyLinkClient
 from .commands_admin import AdminCommandsMixin
 from .commands_user import UserCommandsMixin
 from .config import FeedBotConfig, STYLE_CLEAR_ALL_MARKER
@@ -33,6 +34,8 @@ class FeedBotPlugin(
         super().__init__()
         self.db = AsyncDatabase()
         self._running: bool = False
+        # 身体/麦生活联动客户端（可选功能，[linkage] 默认全关；失败一律静默降级）
+        self._body_link = BodyLinkClient(self)
         self._decay_task: asyncio.Task | None = None  # type: ignore[type-arg]
         self._seek_feed_task: asyncio.Task | None = None  # type: ignore[type-arg]
         # 投喂临时风格：group_id → [effect, ...]；仅内存态，重启即失效
@@ -210,6 +213,9 @@ class FeedBotPlugin(
         await self._sync_group_scope()
 
         self.ctx.logger.info(f"投喂插件配置已更新 (v{version})，重启后台任务")
+
+        # 联动客户端：配置可能改了插件 ID/开关，词表缓存作废待重拉
+        self._body_link.invalidate_foods()
 
         await self._cancel_tasks()
 
