@@ -30,7 +30,7 @@ class PluginSectionConfig(PluginConfigBase):
 
     enabled: bool = Field(default=True, description="是否启用投喂插件")
     config_version: str = Field(
-        default="1.8.1",
+        default="1.8.2",
         description="配置版本（由插件自动维护，与插件版本一致）",
         json_schema_extra={"hidden": True, "disabled": True},
     )
