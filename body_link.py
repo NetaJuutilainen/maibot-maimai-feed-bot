@@ -131,6 +131,7 @@ class BodyLinkClient:
         labels: dict[str, str] = {}
         volumes: dict[str, float] = {}
         base_grams: dict[str, float] = {}
+        groups: dict[str, str] = {}
         for row in items:
             if not isinstance(row, dict):
                 continue
@@ -142,6 +143,7 @@ class BodyLinkClient:
             volumes[key] = _num(row.get("volume_ml"), 0.0)
             base_grams[key] = self._portion_base_grams(str(row.get("default_portion") or ""),
                                                        _num(row.get("volume_ml"), 0.0))
+            groups[key] = str(row.get("group") or "").strip()
         aliases: dict[str, str] = {}
         for word, target in (raw.get("aliases") or {}).items():
             if isinstance(target, list):
@@ -153,6 +155,7 @@ class BodyLinkClient:
             "labels": labels,
             "volumes": volumes,
             "base_grams": base_grams,
+            "groups": groups,
             "aliases": aliases,
         }
         self._foods_ts = time.time()

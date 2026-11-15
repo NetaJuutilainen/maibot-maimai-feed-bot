@@ -95,6 +95,32 @@
   .fd-field label { display: block; font-size: 12px; color: var(--fd-muted); margin-bottom: 4px; }
   .fd-hint { font-size: 12px; color: var(--fd-muted); margin-top: 8px; line-height: 1.6; }
   .fd-loading { text-align: center; color: var(--fd-muted); padding: 30px 0; }
+
+  /* 食物选词弹窗 */
+  .fd-picker-overlay {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45);
+    display: none; align-items: center; justify-content: center; z-index: 50;
+  }
+  .fd-picker-overlay.active { display: flex; }
+  .fd-picker {
+    background: var(--fd-surface); color: var(--fd-fg); border: 1px solid var(--fd-border);
+    border-radius: var(--fd-radius); width: min(720px, 92vw); max-height: 78vh;
+    display: flex; flex-direction: column; padding: 14px 16px; gap: 10px;
+  }
+  .fd-picker-head { display: flex; align-items: center; gap: 10px; }
+  .fd-picker-head b { font-size: 14px; }
+  .fd-picker-head .fd-input { flex: 1; }
+  .fd-picker-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .fd-chip { padding: 3px 10px; font-size: 12px; border-radius: 999px; border: 1px solid var(--fd-border); background: var(--fd-soft); cursor: pointer; font-family: inherit; color: var(--fd-fg); }
+  .fd-chip.active { background: var(--fd-primary); color: var(--fd-primary-fg); border-color: var(--fd-primary); }
+  .fd-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; overflow-y: auto; padding: 4px 2px; min-height: 120px; }
+  .fd-food { padding: 6px 4px; font-size: 12px; text-align: center; border-radius: 8px; border: 1px solid var(--fd-border); background: var(--fd-soft); cursor: pointer; color: var(--fd-fg); font-family: inherit; }
+  .fd-food:hover { background: var(--fd-primary); color: var(--fd-primary-fg); border-color: var(--fd-primary); }
+
+  /* 插件设置卡片 */
+  .fd-settings-group { margin-bottom: 14px; }
+  .fd-settings-group h3 { font-size: 13px; color: var(--fd-muted); margin: 0 0 8px; font-weight: 650; }
+  .fd-settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
 </style>
 </head>
 <body>
@@ -150,7 +176,7 @@
       <div class="fd-field"><label>emoji</label><input class="fd-input fd-input-n" id="new-emoji" maxlength="8" placeholder="🍰"></div>
       <div class="fd-field"><label>描述</label><input class="fd-input" id="new-desc" maxlength="100" placeholder="软软的小蛋糕"></div>
       <div class="fd-field"><label>饱食度（可负）</label><input class="fd-input fd-input-n" id="new-sat" type="number" step="0.1" value="10"></div>
-      <div class="fd-field"><label>映射食物词（可组合）</label><input class="fd-input" id="new-word" list="food-datalist" placeholder="蛋糕 或 米饭,猪肉,青菜"></div>
+      <div class="fd-field"><label>映射食物词（可组合）</label><div style="display:flex; gap:6px;"><input class="fd-input" id="new-word" list="food-datalist" placeholder="蛋糕 或 米饭,猪肉,青菜"><button class="fd-btn fd-btn-sm" onclick="openPickerById('new-word')">📖</button></div></div>
       <div class="fd-field"><label>类型</label><select class="fd-select" id="new-kind"><option value="snack">snack 食物</option><option value="drink">drink 饮品</option><option value="meal">meal 整桌饭</option></select></div>
       <div class="fd-field"><label>每份克数（可选）</label><input class="fd-input fd-input-n" id="new-grams" type="number" min="0" max="3000" placeholder="留空=默认"></div>
     </div>
@@ -161,15 +187,44 @@
   </div>
 
   <datalist id="food-datalist"></datalist>
+
+  <div class="fd-card">
+    <div class="fd-card-title">⚙ 插件设置 <span class="fd-tag">白名单项 · 写入 config.toml 热重载生效</span></div>
+    <div id="settings-wrap"><div class="fd-loading">加载中…</div></div>
+    <div style="margin-top: 12px; display: flex; align-items: center; gap: 10px;">
+      <button class="fd-btn fd-btn-primary" id="btn-save-cfg" onclick="saveSettings()">保存插件设置</button>
+      <span class="fd-hint" style="margin: 0;">改完点保存，几秒内热重载生效；群授权/白名单请继续用命令管理</span>
+    </div>
+  </div>
+
+  <div class="fd-picker-overlay" id="picker-overlay">
+    <div class="fd-picker">
+      <div class="fd-picker-head">
+        <b>选择食物词</b>
+        <input class="fd-input" id="picker-search" placeholder="搜索食物（如：米饭 / 啤酒 / 蛋挞）…" oninput="renderPickerGrid()">
+        <button class="fd-btn fd-btn-sm" onclick="closePicker()">关闭</button>
+      </div>
+      <div class="fd-picker-chips" id="picker-chips"></div>
+      <div class="fd-picker-grid" id="picker-grid"></div>
+      <div class="fd-hint" style="margin: 0;">点击词写入映射框；组合（定食）继续点下一个词会自动用逗号追加，「清空」重填。</div>
+      <div style="display: flex; gap: 8px;">
+        <button class="fd-btn fd-btn-sm fd-btn-danger" onclick="pickerAppend(true)">清空已选</button>
+        <button class="fd-btn fd-btn-sm fd-btn-primary" onclick="closePicker()">完成</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
 (function () {
   "use strict";
-  var FOODS = { labels: {}, aliases: {}, base_grams: {}, volumes: {} };
+  var FOODS = { labels: {}, aliases: {}, base_grams: {}, volumes: {}, groups: {} };
   var ITEMS = [];
-  var GROUPS = [];
+  var GROUPS = []; // [{group_id, group_name}]
+  var CFG_FIELDS = [];
   var SCOPE = "all"; // all | global | group:<gid>
+  var pickerTarget = null; // 选词弹窗的目标输入框
+  var pickerGroup = "";
 
   function $(id) { return document.getElementById(id); }
 
@@ -235,9 +290,20 @@
     return null;
   }
 
+  function groupName(gid) {
+    for (var i = 0; i < GROUPS.length; i++) {
+      if (GROUPS[i].group_id === gid && GROUPS[i].group_name) return GROUPS[i].group_name;
+    }
+    return "";
+  }
+  function groupLabel(gid) {
+    var n = groupName(gid);
+    return n ? n + " (" + gid + ")" : "群 " + gid;
+  }
+
   function renderScopeTabs() {
     var tabs = [{ key: "all", label: "📋 全部" }, { key: "global", label: "🌐 全局商店" }];
-    GROUPS.forEach(function (gid) { tabs.push({ key: "group:" + gid, label: "🏠 群 " + gid }); });
+    GROUPS.forEach(function (g) { tabs.push({ key: "group:" + g.group_id, label: "🏠 " + groupLabel(g.group_id) }); });
     $("scope-tabs").innerHTML = tabs.map(function (t) {
       return '<button class="fd-tab' + (SCOPE === t.key ? ' active' : '') + '" data-scope="' + t.key + '">' + t.label + '</button>';
     }).join("");
@@ -246,7 +312,7 @@
     });
   }
 
-  function scopeTag(it) { return it.scope === "global" ? "全局" : "群" + it.group_id; }
+  function scopeTag(it) { return it.scope === "global" ? "全局" : groupLabel(it.group_id); }
   function inScope(it) {
     if (SCOPE === "all") return true;
     if (SCOPE === "global") return it.scope === "global";
@@ -309,7 +375,8 @@
     return '<tr data-id="' + it.item_id + '">' +
       '<td class="fd-name">' + name + "</td>" +
       '<td><div class="fd-row-inputs">' +
-        '<label>映射词<input class="fd-input" style="max-width:210px;" list="food-datalist" data-m="word" value="' + escAttr(it.body_food) + '" placeholder="留空=纯游戏道具"></label>' +
+        '<label>映射词<input class="fd-input" style="max-width:190px;" list="food-datalist" data-m="word" value="' + escAttr(it.body_food) + '" placeholder="留空=纯游戏道具"></label>' +
+        '<button class="fd-btn fd-btn-sm" onclick="openPickerByRow(this)">📖 选词</button>' +
         '<label>类型<select class="fd-select" data-m="kind">' + kindSel + "</select></label>" +
         '<label>克数<input class="fd-input fd-input-n" data-m="grams" type="number" min="0" max="3000" value="' + (it.body_grams > 0 ? Number(it.body_grams) : "") + '" placeholder="默认"></label>' +
         '<span class="fd-valid" data-m="vmark">' + vHtml + "</span>" +
@@ -505,7 +572,135 @@
   function fillDatalist() {
     var labels = Object.keys(FOODS.labels).map(function (k) { return FOODS.labels[k]; }).sort();
     $("food-datalist").innerHTML = labels.map(function (l) { return '<option value="' + escAttr(l) + '">'; }).join("");
+    var scopeSel = $("new-scope");
+    var current = scopeSel.value;
+    scopeSel.innerHTML = '<option value="global">🌐 全局商店</option>' + GROUPS.map(function (g) {
+      return '<option value="group:' + g.group_id + '">🏠 ' + escAttr(groupLabel(g.group_id)) + "</option>";
+    }).join("");
+    scopeSel.value = current;
   }
+
+  // ---- 食物选词弹窗（搜索 + 分组 + 点选写入） ----
+  function openPicker(targetInput) {
+    pickerTarget = targetInput || null;
+    pickerGroup = "";
+    $("picker-search").value = "";
+    renderPickerChips();
+    renderPickerGrid();
+    $("picker-overlay").classList.add("active");
+  }
+  window.openPickerByRow = function (btn) {
+    var input = btn.closest(".fd-row-inputs").querySelector('[data-m="word"]');
+    openPicker(input);
+  };
+  window.openPickerById = function (id) { openPicker($(id)); };
+  function closePicker() { $("picker-overlay").classList.remove("active"); pickerTarget = null; }
+  window.closePicker = closePicker;
+  window.hideBanner = hideBanner;
+
+  function renderPickerChips() {
+    var groups = {};
+    for (var key in FOODS.labels) {
+      var g = FOODS.groups[key] || "其他";
+      groups[g] = (groups[g] || 0) + 1;
+    }
+    var names = Object.keys(groups).sort();
+    $("picker-chips").innerHTML =
+      '<button class="fd-chip' + (pickerGroup === "" ? " active" : "") + '" onclick="setPickerGroup(\'\')">全部 ' + Object.keys(FOODS.labels).length + "</button>" +
+      names.map(function (n) {
+        return '<button class="fd-chip' + (pickerGroup === n ? " active" : "") + '" onclick="setPickerGroup(\'' + n.replace(/'/g, "") + '\')">' + escAttr(n) + " " + groups[n] + "</button>";
+      }).join("");
+  }
+  window.setPickerGroup = function (g) { pickerGroup = g; renderPickerChips(); renderPickerGrid(); };
+
+  function renderPickerGrid() {
+    var q = $("picker-search").value.trim().toLowerCase();
+    var words = [];
+    for (var key in FOODS.labels) {
+      var label = FOODS.labels[key];
+      if (pickerGroup && (FOODS.groups[key] || "") !== pickerGroup) continue;
+      if (q && label.toLowerCase().indexOf(q) < 0 && key.toLowerCase().indexOf(q) < 0) continue;
+      words.push(label);
+    }
+    words.sort();
+    $("picker-grid").innerHTML = words.length
+      ? words.map(function (w) { return '<button class="fd-food" onclick="pickerAppend(false, \'' + escAttr(w) + '\')">' + escAttr(w) + "</button>"; }).join("")
+      : '<div class="fd-loading">没有匹配的食物</div>';
+  }
+  window.renderPickerGrid = renderPickerGrid;
+
+  window.pickerAppend = function (clearOnly, word) {
+    if (!pickerTarget) return;
+    if (clearOnly) { pickerTarget.value = ""; return; }
+    var cur = pickerTarget.value.trim();
+    if (!cur) { pickerTarget.value = word; }
+    else {
+      var parts = splitWords(cur);
+      if (parts.indexOf(word) < 0) parts.push(word);
+      pickerTarget.value = parts.join(",");
+    }
+    // 写入后立即刷新校验标记（映射行）
+    var tr = pickerTarget.closest("tr");
+    if (tr) {
+      var mark = tr.querySelector('[data-m="vmark"]');
+      var v = tr.querySelector('[data-m="word"]');
+      if (mark && v) {
+        var keys = resolveWords(v.value);
+        mark.className = "fd-valid " + (!v.value ? "none" : keys ? "ok" : "bad");
+        mark.textContent = !v.value ? "— 未映射" : keys ? "✓ 可解析" : "✗ 认不出";
+      }
+    }
+  };
+
+  // ---- 插件设置卡片 ----
+  function renderSettings(values) {
+    var wrap = $("settings-wrap");
+    var bySec = {};
+    CFG_FIELDS.forEach(function (f) { (bySec[f.section] = bySec[f.section] || []).push(f); });
+    var secLabels = {
+      bot_attr: "Bot 属性（饱食度/求投喂）", sign: "签到积分", llm: "LLM 回复",
+      style: "投喂风格", shop: "商店", linkage: "跨插件联动"
+    };
+    var html = "";
+    for (var sec in bySec) {
+      html += '<div class="fd-settings-group"><h3>' + (secLabels[sec] || sec) + "</h3><div class=\"fd-settings-grid\">";
+      bySec[sec].forEach(function (f) {
+        var full = sec + "." + f.key;
+        var val = values && values[sec] ? values[sec][f.key] : "";
+        if (f.type === "boolean") {
+          html += '<div class="fd-field"><label>' + escAttr(f.label) + '</label><select class="fd-select" data-cf="' + full + '">' +
+            '<option value="true"' + (val === true ? " selected" : "") + ">开启</option>" +
+            '<option value="false"' + (val === false ? " selected" : "") + ">关闭</option></select></div>";
+        } else if (f.type === "number") {
+          html += '<div class="fd-field"><label>' + escAttr(f.label) + (f.min !== undefined ? "（" + f.min + " ~ " + f.max + "）" : "") + '</label>' +
+            '<input class="fd-input fd-input-n" data-cf="' + full + '" type="number" step="0.1" value="' + escAttr(val === null || val === undefined ? "" : val) + '"></div>';
+        } else {
+          html += '<div class="fd-field"><label>' + escAttr(f.label) + '</label><input class="fd-input" data-cf="' + full + '" value="' + escAttr(val === null || val === undefined ? "" : val) + '"></div>';
+        }
+      });
+      html += "</div></div>";
+    }
+    wrap.innerHTML = html;
+  }
+
+  window.saveSettings = function () {
+    var payload = {};
+    Array.prototype.forEach.call(document.querySelectorAll("[data-cf]"), function (el) {
+      var v = el.value;
+      payload[el.getAttribute("data-cf")] = v === "true" ? true : v === "false" ? false : v;
+    });
+    var btn = $("btn-save-cfg");
+    btn.disabled = true;
+    call("action", "config_save", { values_json: JSON.stringify(payload) }).then(function (res) {
+      btn.disabled = false;
+      if (res && res.ok === false) { showBanner(res.error || "保存失败", "err"); return; }
+      showBanner("✅ " + (res.note || "已保存"), "okmsg");
+      setTimeout(function () { loadAll(); }, 2500); // 等宿主热重载后刷新状态
+    }).catch(function (err) {
+      btn.disabled = false;
+      showBanner("保存失败：" + (err && err.message || err), "err");
+    });
+  };
 
   function loadAll(force) {
     $("shop-wrap").innerHTML = '<div class="fd-loading">加载中…</div>';
@@ -515,10 +710,12 @@
       FOODS = ov.foods || FOODS;
       ITEMS = ov.items || [];
       GROUPS = ov.groups || [];
+      CFG_FIELDS = ov.config_fields || CFG_FIELDS;
       renderPills(ov);
       renderScopeTabs();
       fillDatalist();
       renderAll();
+      renderSettings(ov.config || {});
     }).catch(function (err) {
       $("shop-wrap").innerHTML = '<div class="fd-loading">加载失败：' + escAttr(err && err.message || err) + "</div>";
       $("map-wrap").innerHTML = '<div class="fd-loading">加载失败</div>';
