@@ -5,8 +5,6 @@
 <title>麦麦要吃辣个 · 投喂商店管理</title>
 <style>
   .fd-root {
-    /* 颜色全部走宿主 --maibot-* 主题变量（三种 dashboard 风格 × 明暗自动适配）；
-       拿不到变量时回落到下面的亮色值，:root.dark/.fd-dark 覆写暗色 */
     --fd-bg: var(--maibot-background, #f9f9f7);
     --fd-surface: var(--maibot-surface, #fcfcfb);
     --fd-fg: var(--maibot-foreground, #0b0b0b);
@@ -91,48 +89,36 @@
   .fd-row-inputs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .fd-row-inputs label { font-size: 12px; color: var(--fd-muted); display: flex; flex-direction: column; gap: 3px; }
   .fd-actions { display: flex; gap: 7px; flex-wrap: wrap; }
-  .fd-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+
+  /* 行内展开面板（编辑器 / 选词器）——不用 fixed，插在触发行旁边 */
+  .fd-inline-cell { padding: 12px 14px !important; background: var(--fd-soft); }
+  .fd-inline-panel { border: 1px solid var(--fd-primary); border-radius: var(--fd-radius); padding: 14px 16px; background: var(--fd-surface); }
+  .fd-panel-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .fd-panel-head b { font-size: 15px; }
+  .fd-panel-head .fd-input { flex: 1; min-width: 160px; }
+  .fd-picker-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 10px; }
+  .fd-chip { padding: 4px 12px; font-size: 13px; border-radius: 999px; border: 1px solid var(--fd-border); background: var(--fd-soft); cursor: pointer; font-family: inherit; color: var(--fd-fg); }
+  .fd-chip.active { background: var(--fd-primary); color: var(--fd-primary-fg); border-color: var(--fd-primary); }
+  .fd-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; max-height: 300px; overflow-y: auto; padding: 4px 2px; }
+  .fd-food { padding: 9px 6px; font-size: 13px; text-align: center; border-radius: 9px; border: 1px solid var(--fd-border); background: var(--fd-soft); cursor: pointer; color: var(--fd-fg); font-family: inherit; }
+  .fd-food:hover { border-color: var(--fd-primary); }
+  .fd-food.sel { background: var(--fd-primary); color: var(--fd-primary-fg); border-color: var(--fd-primary); font-weight: 600; }
+  .fd-sel-list { font-size: 13px; color: var(--fd-muted); min-height: 18px; line-height: 1.8; margin-top: 10px; }
+  .fd-sel-list .fd-sel-word { display: inline-block; padding: 2px 9px; margin: 2px 4px 2px 0; border-radius: 999px; background: var(--fd-soft); border: 1px solid var(--fd-border); color: var(--fd-fg); }
+
+  .fd-form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+  @media (max-width: 900px) { .fd-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .fd-form-grid .fd-span-2 { grid-column: span 2; }
+  .fd-form-grid .fd-span-4 { grid-column: 1 / -1; }
   .fd-field label { display: block; font-size: 13px; color: var(--fd-muted); margin-bottom: 5px; }
   .fd-hint { font-size: 13px; color: var(--fd-muted); margin-top: 10px; line-height: 1.7; }
   .fd-loading { text-align: center; color: var(--fd-muted); padding: 34px 0; }
 
-  /* 作用域 chips（新建表单用，替代原生下拉） */
-  .fd-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-
-  /* 食物选词弹窗（大面板 + 多选高亮） */
-  .fd-overlay {
-    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5);
-    display: none; align-items: center; justify-content: center; z-index: 60;
-  }
-  .fd-overlay.active { display: flex; }
-  .fd-panel {
-    background: var(--fd-surface); color: var(--fd-fg); border: 1px solid var(--fd-border);
-    border-radius: var(--fd-radius); width: min(920px, 94vw); max-height: 84vh;
-    display: flex; flex-direction: column; padding: 18px 20px; gap: 12px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
-  }
-  .fd-panel-head { display: flex; align-items: center; gap: 12px; }
-  .fd-panel-head b { font-size: 15px; }
-  .fd-panel-head .fd-input { flex: 1; }
-  .fd-picker-chips { display: flex; flex-wrap: wrap; gap: 7px; }
-  .fd-chip { padding: 4px 12px; font-size: 13px; border-radius: 999px; border: 1px solid var(--fd-border); background: var(--fd-soft); cursor: pointer; font-family: inherit; color: var(--fd-fg); }
-  .fd-chip.active { background: var(--fd-primary); color: var(--fd-primary-fg); border-color: var(--fd-primary); }
-  .fd-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; overflow-y: auto; padding: 4px 2px; min-height: 240px; max-height: 42vh; }
-  .fd-food { padding: 9px 6px; font-size: 13px; text-align: center; border-radius: 9px; border: 1px solid var(--fd-border); background: var(--fd-soft); cursor: pointer; color: var(--fd-fg); font-family: inherit; }
-  .fd-food:hover { border-color: var(--fd-primary); }
-  .fd-food.sel { background: var(--fd-primary); color: var(--fd-primary-fg); border-color: var(--fd-primary); font-weight: 600; }
-  .fd-sel-list { font-size: 13px; color: var(--fd-muted); min-height: 18px; line-height: 1.6; }
-  .fd-sel-list .fd-sel-word { display: inline-block; padding: 2px 9px; margin: 2px 4px 2px 0; border-radius: 999px; background: var(--fd-soft); border: 1px solid var(--fd-border); color: var(--fd-fg); }
-
-  /* 完整编辑弹窗 */
-  .fd-edit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
-  .fd-edit-grid .fd-wide { grid-column: 1 / -1; }
-
   /* 插件设置卡片 */
   .fd-settings-group { margin-bottom: 18px; }
   .fd-settings-group h3 { font-size: 14px; color: var(--fd-fg); margin: 0 0 10px; font-weight: 650; }
-  .fd-settings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-  .fd-setting { border: 1px solid var(--fd-border); border-radius: 10px; padding: 10px 12px; background: var(--fd-bg); }
+  .fd-settings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+  .fd-setting { border: 1px solid var(--fd-border); border-radius: 10px; padding: 12px 14px; background: var(--fd-bg); min-height: 76px; }
   .fd-setting label { display: block; font-size: 12px; color: var(--fd-muted); margin-bottom: 6px; line-height: 1.5; }
   .fd-setting .fd-input, .fd-setting .fd-select { font-size: 14px; }
 </style>
@@ -168,7 +154,7 @@
       <span class="fd-pill" id="foods-pill">词表 —</span>
     </div>
     <div id="shop-wrap"><div class="fd-loading">加载中…</div></div>
-    <div class="fd-hint">这里的保存只写商店层：价格、饱食度、emoji（✏️ 可进完整编辑改名称与描述；映射在下面「❤️ 麦麦身体联动」区块单独保存）。</div>
+    <div class="fd-hint">这里的保存只写商店层：价格、饱食度、emoji（✏️ 展开完整编辑可改名称与描述；映射在下面「❤️ 麦麦身体联动」区块单独保存）。</div>
   </div>
 
   <div class="fd-card">
@@ -188,21 +174,21 @@
 
   <div class="fd-card">
     <div class="fd-card-title">➕ 新建道具（上架 + 映射一步完成）</div>
-    <div class="fd-field" style="margin-bottom: 14px;">
-      <label>作用域（点选，替代下拉）</label>
-      <div class="fd-chips" id="new-scope-chips"></div>
+    <div class="fd-field" style="margin-bottom: 16px;">
+      <label>作用域（点选）</label>
+      <div class="fd-scope-tabs" id="new-scope-chips" style="margin-bottom: 0;"></div>
     </div>
     <div class="fd-form-grid">
       <div class="fd-field"><label>道具名 *</label><input class="fd-input" id="new-name" maxlength="40" placeholder="如：小蛋糕"></div>
       <div class="fd-field"><label>价格（积分）*</label><input class="fd-input fd-input-n" id="new-price" type="number" min="0" value="10"></div>
       <div class="fd-field"><label>emoji</label><input class="fd-input fd-input-n" id="new-emoji" maxlength="8" placeholder="🍰"></div>
       <div class="fd-field"><label>饱食度（可负）</label><input class="fd-input fd-input-n" id="new-sat" type="number" step="0.1" value="10"></div>
-      <div class="fd-field fd-wide"><label>描述</label><input class="fd-input" id="new-desc" maxlength="100" placeholder="软软的小蛋糕"></div>
-      <div class="fd-field fd-wide"><label>映射食物词（可组合 = 定食）</label><div style="display:flex; gap:8px;"><input class="fd-input" id="new-word" list="food-datalist" placeholder="点右侧 📖 选词，或直接写：蛋糕 / 米饭,猪肉,青菜"><button class="fd-btn" onclick="openPickerById('new-word')">📖 选词</button></div></div>
+      <div class="fd-field fd-span-4"><label>描述</label><input class="fd-input" id="new-desc" maxlength="100" placeholder="软软的小蛋糕"></div>
+      <div class="fd-field fd-span-2"><label>映射食物词（可组合 = 定食；推荐克数见联动区说明）</label><input class="fd-input" id="new-word" list="food-datalist" placeholder="点右侧 📖 选词，或直接写：蛋糕 / 米饭,猪肉,青菜"></div>
       <div class="fd-field"><label>类型</label><select class="fd-select" id="new-kind"><option value="snack">snack 食物</option><option value="drink">drink 饮品</option><option value="meal">meal 整桌饭</option></select></div>
-      <div class="fd-field"><label>每份克数（可选，推荐见上方说明）</label><input class="fd-input fd-input-n" id="new-grams" type="number" min="0" max="3000" placeholder="留空=默认"></div>
+      <div class="fd-field"><label>每份克数（可选）</label><input class="fd-input fd-input-n" id="new-grams" type="number" min="0" max="3000" placeholder="留空=默认"></div>
     </div>
-    <div style="margin-top: 14px; display: flex; align-items: center; gap: 12px;">
+    <div style="margin-top: 16px; display: flex; align-items: center; gap: 12px;">
       <button class="fd-btn fd-btn-primary" id="btn-create" onclick="createItem()">建道具 + 绑映射</button>
       <span class="fd-hint" id="create-result" style="margin: 0;"></span>
     </div>
@@ -219,40 +205,21 @@
 
   <datalist id="food-datalist"></datalist>
 
-  <div class="fd-overlay" id="picker-overlay">
-    <div class="fd-panel">
+  <!-- 选词面板模板：唯一实体，用 DOM 移动插到触发行/字段旁边（不用 fixed） -->
+  <div id="picker-panel-holder" style="display: none;">
+    <div class="fd-inline-panel" id="picker-panel">
       <div class="fd-panel-head">
         <b>选择食物词</b>
         <input class="fd-input" id="picker-search" placeholder="搜索食物（如：米饭 / 啤酒 / 蛋挞）…" oninput="renderPickerGrid()">
-        <button class="fd-btn fd-btn-sm" onclick="closePicker()">关闭</button>
+        <button class="fd-btn fd-btn-sm" onclick="closePicker()">完成</button>
       </div>
       <div class="fd-picker-chips" id="picker-chips"></div>
       <div class="fd-picker-grid" id="picker-grid"></div>
       <div class="fd-sel-list" id="picker-sel"></div>
-      <div class="fd-hint" style="margin: 0;">点词 = 选中/取消（选中会高亮，自动写入映射框，组合用逗号连接）；组合（定食）继续点下一个词即可。</div>
-      <div style="display: flex; gap: 8px;">
+      <div class="fd-hint" style="margin: 0;">点词 = 选中/取消（选中高亮，自动写入映射框，组合用逗号连接）；组合（定食）继续点下一个词即可。</div>
+      <div style="display: flex; gap: 8px; margin-top: 8px;">
         <button class="fd-btn fd-btn-sm fd-btn-danger" onclick="pickerClear()">清空已选</button>
         <button class="fd-btn fd-btn-sm fd-btn-primary" onclick="closePicker()">完成</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="fd-overlay" id="edit-overlay">
-    <div class="fd-panel">
-      <div class="fd-panel-head"><b>✏️ 编辑道具完整信息</b><span class="fd-scope-tag" id="edit-scope"></span><button class="fd-btn fd-btn-sm" style="margin-left:auto;" onclick="closeEdit()">关闭</button></div>
-      <div class="fd-edit-grid">
-        <div class="fd-field"><label>道具名（改名会查重）</label><input class="fd-input" id="edit-name" maxlength="40"></div>
-        <div class="fd-field"><label>价格（积分）</label><input class="fd-input fd-input-n" id="edit-price" type="number" min="0"></div>
-        <div class="fd-field"><label>饱食度（可负）</label><input class="fd-input fd-input-n" id="edit-sat" type="number" step="0.1"></div>
-        <div class="fd-field"><label>emoji</label><input class="fd-input fd-input-n" id="edit-emoji" maxlength="8"></div>
-        <div class="fd-field fd-wide"><label>描述</label><input class="fd-input" id="edit-desc" maxlength="100"></div>
-        <div class="fd-field fd-wide"><label>映射食物词（留空 = 普通道具；填词 = 联动道具，可自由切换）</label><div style="display:flex; gap:8px;"><input class="fd-input" id="edit-word" list="food-datalist" placeholder="蛋糕 或 米饭,猪肉,青菜"><button class="fd-btn" onclick="openPickerById('edit-word')">📖 选词</button></div></div>
-        <div class="fd-field"><label>类型</label><select class="fd-select" id="edit-kind"><option value="snack">snack 食物</option><option value="drink">drink 饮品</option><option value="meal">meal 整桌饭</option></select></div>
-        <div class="fd-field"><label>每份克数（可选）</label><input class="fd-input fd-input-n" id="edit-grams" type="number" min="0" max="3000" placeholder="留空=默认"></div>
-      </div>
-      <div style="display: flex; gap: 10px; align-items: center;">
-        <button class="fd-btn fd-btn-primary" id="btn-edit-save" onclick="saveEdit()">保存全部</button>
-        <span class="fd-hint" style="margin: 0;">普通 ↔ 联动 自由切换：清空映射词保存 = 恢复普通道具</span>
       </div>
     </div>
   </div>
@@ -267,10 +234,12 @@
   var CFG_FIELDS = [];
   var SCOPE = "all"; // all | global | group:<gid>
   var CREATE_SCOPE = "global";
-  var pickerSel = []; // 选词弹窗已选词（有序）
-  var pickerTarget = null;
+  var pickerTargetInput = null;
+  var pickerSel = [];
   var pickerGroup = "";
   var editId = 0;
+  // 选词面板唯一实体（静态标记在页尾，DOM 移动到触发位置显示）
+  var pickerPanel = $("picker-panel");
 
   function $(id) { return document.getElementById(id); }
 
@@ -356,14 +325,13 @@
     Array.prototype.forEach.call($("scope-tabs").children, function (btn) {
       btn.onclick = function () { SCOPE = btn.getAttribute("data-scope"); renderScopeTabs(); renderAll(); };
     });
-    // 新建表单的作用域 chips（全局 + 各群）
     var chips = [{ key: "global", label: "🌐 全局商店" }];
     GROUPS.forEach(function (g) { chips.push({ key: "group:" + g.group_id, label: "🏠 " + groupLabel(g.group_id) }); });
     $("new-scope-chips").innerHTML = chips.map(function (c) {
       return '<button class="fd-tab' + (CREATE_SCOPE === c.key ? " active" : "") + '" data-scope="' + c.key + '">' + c.label + "</button>";
     }).join("");
     Array.prototype.forEach.call($("new-scope-chips").children, function (btn) {
-      btn.onclick = function () { CREATE_SCOPE = btn.getAttribute("data-scope"); renderScopeTabs(); };
+      btn.onclick = function () { CREATE_SCOPE = btn.getAttribute("data-scope"); };
     });
   }
 
@@ -402,7 +370,6 @@
     $("foods-pill").textContent = "词表 " + Object.keys(FOODS.labels).length + " 种 · 别名 " + Object.keys(FOODS.aliases).length + " 条";
   }
 
-  // 商店行：游戏字段（价格/饱食度/emoji）+ ✏️ 完整编辑 + 上下架
   function shopRowHtml(it) {
     var name = (it.emoji ? it.emoji : "") + it.name +
       '<span class="fd-scope-tag">' + scopeTag(it) + "</span>" +
@@ -416,12 +383,11 @@
       "</div></td>" +
       '<td><div class="fd-actions">' +
         '<button class="fd-btn fd-btn-sm fd-btn-primary" onclick="saveGameRow(' + it.item_id + ', this)">保存</button>' +
-        '<button class="fd-btn fd-btn-sm" onclick="openEdit(' + it.item_id + ')">✏️ 完整编辑</button>' +
+        '<button class="fd-btn fd-btn-sm" onclick="openEdit(' + it.item_id + ', this)">✏️ 完整编辑</button>' +
         '<button class="fd-btn fd-btn-sm" onclick="toggleSale(' + it.item_id + ", " + (it.is_on_sale ? 0 : 1) + ', this)">' + (it.is_on_sale ? "下架" : "上架") + "</button>" +
       "</div></td></tr>";
   }
 
-  // 联动行：映射词/类型/克数（+ ✏️ 入口）
   function mapRowHtml(it) {
     var name = (it.emoji ? it.emoji : "") + it.name +
       '<span class="fd-scope-tag">' + scopeTag(it) + "</span>";
@@ -433,7 +399,7 @@
     return '<tr data-id="' + it.item_id + '">' +
       '<td class="fd-name">' + name + "</td>" +
       '<td><div class="fd-row-inputs">' +
-        '<label>映射词<input class="fd-input" style="max-width:200px;" list="food-datalist" data-m="word" value="' + escAttr(it.body_food) + '" placeholder="留空=纯游戏道具"></label>' +
+        '<label>映射词<input class="fd-input" style="max-width:200px;" data-m="word" value="' + escAttr(it.body_food) + '" placeholder="留空=纯游戏道具"></label>' +
         '<button class="fd-btn fd-btn-sm" onclick="openPickerByRow(this)">📖 选词</button>' +
         '<label>类型<select class="fd-select" data-m="kind">' + kindSel + "</select></label>" +
         '<label>克数<input class="fd-input fd-input-n" data-m="grams" type="number" min="0" max="3000" value="' + (it.body_grams > 0 ? Number(it.body_grams) : "") + '" placeholder="默认"></label>' +
@@ -441,7 +407,7 @@
       "</div></td>" +
       '<td><div class="fd-actions">' +
         '<button class="fd-btn fd-btn-sm fd-btn-primary" onclick="saveMapRow(' + it.item_id + ', this)">保存映射</button>' +
-        '<button class="fd-btn fd-btn-sm" onclick="openEdit(' + it.item_id + ')">✏️ 完整编辑</button>' +
+        '<button class="fd-btn fd-btn-sm" onclick="openEdit(' + it.item_id + ', this)">✏️ 完整编辑</button>' +
         (it.body_food ? '<button class="fd-btn fd-btn-sm fd-btn-danger" onclick="clearRow(' + it.item_id + ', this)">解除</button>' : "") +
       "</div></td></tr>";
   }
@@ -591,49 +557,76 @@
       });
   };
 
-  // ---- ✏️ 完整编辑弹窗 ----
-  window.openEdit = function (itemId) {
+  // ---- ✏️ 完整编辑（行内展开面板，插在触发行下面——不再用 fixed 弹窗） ----
+  function closeInlinePanels() {
+    Array.prototype.forEach.call(document.querySelectorAll(".fd-inline-row"), function (el) { el.remove(); });
+    // 选词面板送回停泊区
+    var holder = $("picker-panel-holder");
+    if (holder && pickerPanel.parentNode !== holder) holder.appendChild(pickerPanel);
+  }
+  window.closeInlinePanels = closeInlinePanels;
+
+  window.openEdit = function (itemId, btn) {
+    closeInlinePanels();
     var it = findItem(itemId);
     if (!it) { showBanner("道具数据不存在", "err"); return; }
     editId = itemId;
-    $("edit-name").value = it.name;
-    $("edit-price").value = it.price;
-    $("edit-sat").value = Number(it.satiety_bonus);
-    $("edit-emoji").value = it.emoji || "";
-    $("edit-desc").value = it.description || "";
-    $("edit-word").value = it.body_food || "";
-    $("edit-kind").value = it.body_kind || "snack";
-    $("edit-grams").value = it.body_grams > 0 ? Number(it.body_grams) : "";
-    $("edit-scope").textContent = scopeTag(it).replace(/<[^>]*>/g, "");
-    $("edit-overlay").classList.add("active");
+    var tr = btn ? btn.closest("tr") : null;
+    var row = document.createElement("tr");
+    row.className = "fd-inline-row";
+    row.innerHTML =
+      '<td colspan="3" class="fd-inline-cell"><div class="fd-inline-panel">' +
+      '<div class="fd-panel-head"><b>✏️ 编辑道具完整信息</b><span class="fd-scope-tag">' + scopeTag(it) + "</span></div>" +
+      '<div class="fd-edit-grid">' +
+        '<div class="fd-field"><label>道具名（改名会查重）</label><input class="fd-input" data-e="name" maxlength="40" value="' + escAttr(it.name) + '"></div>' +
+        '<div class="fd-field"><label>价格（积分）</label><input class="fd-input fd-input-n" data-e="price" type="number" min="0" value="' + it.price + '"></div>' +
+        '<div class="fd-field"><label>饱食度（可负）</label><input class="fd-input fd-input-n" data-e="sat" type="number" step="0.1" value="' + Number(it.satiety_bonus) + '"></div>' +
+        '<div class="fd-field"><label>emoji</label><input class="fd-input fd-input-n" data-e="emoji" maxlength="8" value="' + escAttr(it.emoji) + '"></div>' +
+        '<div class="fd-field" style="grid-column: 1 / -1;"><label>描述</label><input class="fd-input" data-e="desc" maxlength="100" value="' + escAttr(it.description) + '"></div>' +
+        '<div class="fd-field" style="grid-column: 1 / -1;"><label>映射食物词（留空 = 普通道具；填词 = 联动道具，可自由切换）</label><div style="display:flex; gap:8px;"><input class="fd-input" data-e="word" value="' + escAttr(it.body_food) + '" placeholder="蛋糕 或 米饭,猪肉,青菜"><button class="fd-btn fd-btn-sm" onclick="openPickerByPanel(this)">📖 选词</button></div></div>' +
+        '<div class="fd-field"><label>类型</label><select class="fd-select" data-e="kind">' +
+          ["snack", "drink", "meal"].map(function (k) { return '<option value="' + k + '"' + (k === (it.body_kind || "snack") ? " selected" : "") + ">" + k + "</option>"; }).join("") +
+        "</select></div>" +
+        '<div class="fd-field"><label>每份克数（可选）</label><input class="fd-input fd-input-n" data-e="grams" type="number" min="0" max="3000" value="' + (it.body_grams > 0 ? Number(it.body_grams) : "") + '" placeholder="留空=默认"></div>' +
+      "</div>" +
+      '<div style="margin-top: 12px; display: flex; gap: 10px; align-items: center;">' +
+        '<button class="fd-btn fd-btn-primary" onclick="saveEdit()">保存全部</button>' +
+        '<span class="fd-hint" style="margin: 0;">普通 ↔ 联动 自由切换：清空映射词保存 = 恢复普通道具</span>' +
+      "</div></div></td>";
+    if (tr && tr.parentNode) tr.after(row);
+    else $("shop-wrap").appendChild(row);
+    row.scrollIntoView({ block: "nearest" });
   };
-  function closeEdit() { $("edit-overlay").classList.remove("active"); editId = 0; }
-  window.closeEdit = closeEdit;
 
   window.saveEdit = function () {
-    if (!editId) return;
-    var word = $("edit-word").value.trim();
+    var panel = document.querySelector(".fd-inline-row [data-e='name']");
+    var container = panel ? panel.closest(".fd-inline-panel") : null;
+    function e(name) {
+      var el = container.querySelector('[data-e="' + name + '"]');
+      return el ? el.value : "";
+    }
+    var word = e("word").trim();
     if (word && resolveWords(word) === null) {
       showBanner("映射词「" + word + "」在词表里认不出（可保存但投喂会按纯游戏结算）", "err");
       return;
     }
-    var btn = $("btn-edit-save");
+    var btn = container.querySelector(".fd-btn-primary");
     btn.disabled = true;
     call("action", "item_save", {
       item_id: editId,
-      item_name: $("edit-name").value.trim(),
-      price: parseInt($("edit-price").value, 10) || 0,
-      satiety_bonus: parseFloat($("edit-sat").value) || 0,
-      emoji: $("edit-emoji").value.trim(),
-      description: $("edit-desc").value.trim(),
+      item_name: e("name").trim(),
+      price: parseInt(e("price"), 10) || 0,
+      satiety_bonus: parseFloat(e("sat")) || 0,
+      emoji: e("emoji").trim(),
+      description: e("desc").trim(),
       body_food: word,
-      body_kind: $("edit-kind").value,
-      body_grams: parseFloat($("edit-grams").value) || 0
+      body_kind: e("kind"),
+      body_grams: parseFloat(e("grams")) || 0
     }).then(function (res) {
       btn.disabled = false;
       if (res && res.ok === false) { showBanner(res.error || "保存失败", "err"); return; }
       showBanner("✅ 已保存完整信息" + (res.labels && res.labels.length ? "（映射解析为 " + res.labels.join(" + ") + "）" : ""), "okmsg");
-      closeEdit();
+      closeInlinePanels();
       loadAll();
     }).catch(function (err) {
       btn.disabled = false;
@@ -642,6 +635,7 @@
   };
 
   window.createItem = function () {
+    closeInlinePanels();
     var name = $("new-name").value.trim();
     if (!name) { showBanner("道具名不能为空", "err"); return; }
     var word = $("new-word").value.trim();
@@ -681,61 +675,44 @@
   function fillDatalist() {
     var labels = Object.keys(FOODS.labels).map(function (k) { return FOODS.labels[k]; }).sort();
     $("food-datalist").innerHTML = labels.map(function (l) { return '<option value="' + escAttr(l) + '">'; }).join("");
-    // 新建表单的作用域 chips
-    var chips = [{ key: "global", label: "🌐 全局商店" }];
-    GROUPS.forEach(function (g) { chips.push({ key: "group:" + g.group_id, label: "🏠 " + groupLabel(g.group_id) }); });
-    $("new-scope-chips").innerHTML = chips.map(function (c) {
-      return '<button class="fd-tab' + (CREATE_SCOPE === c.key ? " active" : "") + '" data-scope="' + c.key + '">' + c.label + "</button>";
-    }).join("");
-    Array.prototype.forEach.call($("new-scope-chips").children, function (btn) {
-      btn.onclick = function () { CREATE_SCOPE = btn.getAttribute("data-scope"); renderScopeTabs(); };
-    });
   }
 
-  // ---- 选词弹窗（搜索 + 分组 + 多选高亮） ----
-  function openPicker(targetInput) {
-    pickerTarget = targetInput || null;
-    pickerSel = splitWords(pickerTarget ? pickerTarget.value : "");
+  // ---- 📖 选词面板（唯一实体，DOM 移动到触发位置；多选高亮） ----
+  // pickerPanel 实体已在 IIFE 顶部绑定（var pickerPanel = $("picker-panel")）
+
+  function openPickerPanel(targetInput) {
+    closeInlinePanels();
+    pickerTargetInput = targetInput || null;
+    pickerSel = splitWords(pickerTargetInput ? pickerTargetInput.value : "");
     pickerGroup = "";
     $("picker-search").value = "";
+    var holder = document.createElement("div");
+    holder.className = "fd-picker-holder";
+    holder.appendChild(pickerPanel);
+    if (pickerTargetInput && pickerTargetInput.parentNode) {
+      pickerTargetInput.parentNode.insertBefore(holder, pickerTargetInput.parentNode.firstChild);
+    } else {
+      $("shop-wrap").appendChild(holder);
+    }
     renderPickerChips();
     renderPickerGrid();
     renderPickerSel();
-    $("picker-overlay").classList.add("active");
+    holder.scrollIntoView({ block: "nearest" });
   }
+
   window.openPickerByRow = function (btn) {
-    var input = btn.closest(".fd-row-inputs").querySelector('[data-m="word"]');
-    openPicker(input);
+    var inputs = btn.closest(".fd-row-inputs").querySelectorAll("input");
+    openPickerPanel(inputs.length ? inputs[inputs.length - 1] : btn);
   };
-  window.openPickerById = function (id) { openPicker($(id)); };
-  function closePicker() { $("picker-overlay").classList.remove("active"); pickerTarget = null; }
+  window.openPickerById = function (id) { openPickerPanel($(id)); };
+
+  function closePicker() {
+    var holder = $("picker-panel-holder");
+    if (pickerPanel.parentNode !== holder) holder.appendChild(pickerPanel);
+    pickerTargetInput = null;
+  }
   window.closePicker = closePicker;
   window.hideBanner = hideBanner;
-
-  function syncPickerTarget() {
-    if (pickerTarget) pickerTarget.value = pickerSel.join(",");
-    // 映射行的校验标记即时刷新
-    var tr = pickerTarget && pickerTarget.closest ? pickerTarget.closest("tr") : null;
-    if (tr) {
-      var mark = tr.querySelector('[data-m="vmark"]');
-      var v = tr.querySelector('[data-m="word"]');
-      if (mark && v) {
-        var keys = resolveWords(v.value);
-        mark.className = "fd-valid " + (!v.value ? "none" : keys ? "ok" : "bad");
-        mark.textContent = !v.value ? "— 未映射" : keys ? "✓ 可解析" : "✗ 认不出";
-      }
-    }
-  }
-
-  function togglePickerWord(w) {
-    var idx = pickerSel.indexOf(w);
-    if (idx >= 0) pickerSel.splice(idx, 1);
-    else pickerSel.push(w);
-    syncPickerTarget();
-    renderPickerGrid();
-    renderPickerSel();
-  }
-  window.togglePickerWord = togglePickerWord;
 
   window.pickerClear = function () {
     pickerSel = [];
@@ -744,47 +721,96 @@
     renderPickerSel();
   };
 
+  function syncPickerTarget() {
+    if (pickerTargetInput) pickerTargetInput.value = pickerSel.join(",");
+    // 就近刷新校验标记（映射行）
+    var row = pickerTargetInput && pickerTargetInput.closest ? pickerTargetInput.closest("tr") : null;
+    var mark = row ? row.querySelector('[data-m="vmark"]') : null;
+    var wordInput = row ? row.querySelector('[data-m="word"]') : null;
+    if (mark && wordInput) {
+      var keys = resolveWords(wordInput.value);
+      mark.className = "fd-valid " + (!wordInput.value ? "none" : keys ? "ok" : "bad");
+      mark.textContent = !wordInput.value ? "— 未映射" : keys ? "✓ 可解析" : "✗ 认不出";
+    }
+  }
+
   function renderPickerSel() {
     $("picker-sel").innerHTML = pickerSel.length
-      ? "已选（点上面的词可取消）：" + pickerSel.map(function (w) { return '<span class="fd-sel-word">' + escAttr(w) + "</span>"; }).join("")
+      ? "已选（点词可取消）：" + pickerSel.map(function (w) { return '<span class="fd-sel-word">' + escAttr(w) + "</span>"; }).join("")
       : "已选：无";
   }
 
   function renderPickerChips() {
-    var groups = {};
+    var counts = {};
     for (var key in FOODS.labels) {
       var g = FOODS.groups[key] || "其他";
-      groups[g] = (groups[g] || 0) + 1;
+      counts[g] = (counts[g] || 0) + 1;
     }
-    var names = Object.keys(groups).sort();
+    var names = Object.keys(counts).sort();
     $("picker-chips").innerHTML =
-      '<button class="fd-chip' + (pickerGroup === "" ? " active" : "") + '" onclick="setPickerGroup(\'\')">全部 ' + Object.keys(FOODS.labels).length + "</button>" +
+      '<button class="fd-chip' + (pickerGroup === "" ? " active" : "") + '" data-g="">全部 ' + Object.keys(FOODS.labels).length + "</button>" +
       names.map(function (n) {
-        return '<button class="fd-chip' + (pickerGroup === n ? " active" : "") + '" onclick="setPickerGroup(\'' + n.replace(/'/g, "") + "\')'>" + escAttr(n) + " " + groups[n] + "</button>";
+        return '<button class="fd-chip' + (pickerGroup === n ? " active" : "") + '" data-g="' + escAttr(n) + '">' + escAttr(n) + " " + counts[n] + "</button>";
       }).join("");
   }
-  window.setPickerGroup = function (g) { pickerGroup = g; renderPickerChips(); renderPickerGrid(); };
 
   function renderPickerGrid() {
-    var q = $("picker-search").value.trim().toLowerCase();
-    var words = [];
-    for (var key in FOODS.labels) {
-      var label = FOODS.labels[key];
-      if (pickerGroup && (FOODS.groups[key] || "") !== pickerGroup) continue;
-      if (q && label.toLowerCase().indexOf(q) < 0 && key.toLowerCase().indexOf(q) < 0) continue;
-      words.push(label);
+    var wrap = $("picker-grid");
+    if (!wrap) return;
+    try {
+      var q = $("picker-search").value.trim().toLowerCase();
+      var words = [];
+      for (var key in FOODS.labels) {
+        var label = FOODS.labels[key];
+        if (pickerGroup && (FOODS.groups[key] || "") !== pickerGroup) continue;
+        if (q && label.toLowerCase().indexOf(q) < 0 && key.toLowerCase().indexOf(q) < 0) continue;
+        words.push(label);
+      }
+      words.sort();
+      wrap.innerHTML = words.length
+        ? words.map(function (w) {
+            var sel = pickerSel.indexOf(w) >= 0;
+            return '<button type="button" class="fd-food' + (sel ? " sel" : "") + '" data-word="' + escAttr(w) + '">' + (sel ? "✓ " : "") + escAttr(w) + "</button>";
+          }).join("")
+        : '<div class="fd-loading">没有匹配的食物——请换个词，或直接在映射框手写中文食物名</div>';
+    } catch (err) {
+      wrap.innerHTML = '<div class="fd-loading">选词渲染出错：' + escAttr(err && err.message || err) + "</div>";
     }
-    words.sort();
-    $("picker-grid").innerHTML = words.length
-      ? words.map(function (w) {
-          var sel = pickerSel.indexOf(w) >= 0;
-          return '<button class="fd-food' + (sel ? " sel" : "") + '" onclick="togglePickerWord(\'' + escAttr(w) + "\')'>" + (sel ? "✓ " : "") + escAttr(w) + "</button>";
-        }).join("")
-      : '<div class="fd-loading">没有匹配的食物</div>';
   }
   window.renderPickerGrid = renderPickerGrid;
 
-  // ---- 插件设置卡片 ----
+  function pickerToggleWord(w) {
+    var idx = pickerSel.indexOf(w);
+    if (idx >= 0) pickerSel.splice(idx, 1);
+    else pickerSel.push(w);
+    syncPickerTarget();
+    renderPickerGrid();
+    renderPickerSel();
+  }
+
+  // 事件委托：选词面板挂一个监听器，处理 chip 与 food 的点击（不生成 310 个内联 onclick）
+  document.addEventListener("click", function (ev) {
+    var chip = ev.target.closest ? ev.target.closest(".fd-chip[data-g]") : null;
+    if (chip) { pickerGroup = chip.getAttribute("data-g"); renderPickerChips(); renderPickerGrid(); return; }
+    var food = ev.target.closest ? ev.target.closest(".fd-food[data-word]") : null;
+    if (food) { pickerToggleWord(food.getAttribute("data-word")); return; }
+  });
+
+  function fillDatalist() {
+    var labels = Object.keys(FOODS.labels).map(function (k) { return FOODS.labels[k]; }).sort();
+    $("food-datalist").innerHTML = labels.map(function (l) { return '<option value="' + escAttr(l) + '">'; }).join("");
+    // 新建表单的作用域 chips
+    var chips = [{ key: "global", label: "🌐 全局商店" }];
+    GROUPS.forEach(function (g) { chips.push({ key: "group:" + g.group_id, label: "🏠 " + groupLabel(g.group_id) }); });
+    $("new-scope-chips").innerHTML = chips.map(function (c) {
+      return '<button class="fd-tab' + (CREATE_SCOPE === c.key ? " active" : "") + '" data-scope="' + c.key + '">' + c.label + "</button>";
+    }).join("");
+    Array.prototype.forEach.call($("new-scope-chips").children, function (btn) {
+      btn.onclick = function () { CREATE_SCOPE = btn.getAttribute("data-scope"); };
+    });
+  }
+
+  // ---- ⚙ 插件设置卡片渲染 ----
   function renderSettings(values) {
     var wrap = $("settings-wrap");
     var bySec = {};
@@ -837,20 +863,6 @@
     });
   };
 
-  function fillDatalist() {
-    var labels = Object.keys(FOODS.labels).map(function (k) { return FOODS.labels[k]; }).sort();
-    $("food-datalist").innerHTML = labels.map(function (l) { return '<option value="' + escAttr(l) + '">'; }).join("");
-    // 新建表单的作用域 chips
-    var chips = [{ key: "global", label: "🌐 全局商店" }];
-    GROUPS.forEach(function (g) { chips.push({ key: "group:" + g.group_id, label: "🏠 " + groupLabel(g.group_id) }); });
-    $("new-scope-chips").innerHTML = chips.map(function (c) {
-      return '<button class="fd-tab' + (CREATE_SCOPE === c.key ? " active" : "") + '" data-scope="' + c.key + '">' + c.label + "</button>";
-    }).join("");
-    Array.prototype.forEach.call($("new-scope-chips").children, function (btn) {
-      btn.onclick = function () { CREATE_SCOPE = btn.getAttribute("data-scope"); };
-    });
-  }
-
   function loadAll(force) {
     $("shop-wrap").innerHTML = '<div class="fd-loading">加载中…</div>';
     $("map-wrap").innerHTML = '<div class="fd-loading">加载中…</div>';
@@ -890,6 +902,23 @@
   }).catch(function (err) {
     $("shop-wrap").innerHTML = '<div class="fd-loading">桥初始化失败：' + escAttr(err && err.message || err) + "</div>";
   });
+
+  // 临时调试钩子（验收后移除）
+  window.__fdDebug = function () {
+    var g = document.getElementById("picker-grid");
+    var g2 = document.getElementById("picker-panel-holder");
+    return {
+      labels: Object.keys(FOODS.labels).length,
+      groups: Object.keys(FOODS.groups || {}).length,
+      aliases: Object.keys(FOODS.aliases || {}).length,
+      items: ITEMS.length,
+      pickerInHolder: pickerPanel ? pickerPanel.parentNode === g2 : false,
+      pickerAttached: pickerPanel ? !!pickerPanel.parentNode : false,
+      gridChildren: g ? g.childElementCount : -1,
+      gridHTMLHead: JSON.stringify((g ? g.innerHTML : "").slice(0, 80)),
+      gridLog: (window.__gridLog || []).slice(0, 6)
+    };
+  };
 })();
 </script>
 </body>
