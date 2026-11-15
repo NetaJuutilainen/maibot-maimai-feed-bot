@@ -307,6 +307,24 @@ class UserCommandsMixin:
             await self.ctx.send.text("商店空空如也～等管理员上架道具吧！", stream_id)
             return True, "商店为空", True
 
+        # 分区：带身体映射的道具归入「🫀 身体食堂」，普通道具照旧（一份经济，展示分层）
+        def _split_linked(items: list[tuple[Any, ...]]) -> tuple[list, list]:
+            normal = [t for t in items if not str(t[8] or "").strip()]
+            linked = [t for t in items if str(t[8] or "").strip()]
+            return normal, linked
+
+        g_normal, g_linked = _split_linked(global_items)
+        s_normal, s_linked = _split_linked(group_items)
+        sections: list[tuple[str, list[tuple[Any, ...]]]] = []
+        if g_normal:
+            sections.append(("🌐 全局道具", g_normal))
+        if g_linked:
+            sections.append(("🫀 身体食堂（全局）", g_linked))
+        if s_normal:
+            sections.append(("🏠 本群专属", s_normal))
+        if s_linked:
+            sections.append(("🫀 身体食堂（本群）", s_linked))
+
         # 图片菜单（WebUI [shop].render_image 可关）；渲染/发送失败一律回退文本
         render_image = False
         try:
@@ -318,7 +336,7 @@ class UserCommandsMixin:
                 from .menu_render import render_shop_menu_base64
 
                 image_b64 = render_shop_menu_base64(
-                    global_items, group_items, max_batch=MAX_BATCH_QUANTITY
+                    sections, max_batch=MAX_BATCH_QUANTITY
                 )
                 await self.ctx.send.image(image_b64, stream_id)
                 return True, "查看商店（图片菜单）", True
@@ -367,20 +385,12 @@ class UserCommandsMixin:
 
         lines: list[str] = []
 
-        if global_items:
-            lines.append("🌐 全局道具")
-            for (name, emoji, price, desc, _cat, satiety_bonus, style_prompt,
-                 style_duration, body_food, body_kind, body_grams) in global_items:
-                lines.extend(_item_line(name, emoji, price, desc, satiety_bonus,
-                                        style_prompt, style_duration,
-                                        body_food, body_kind, body_grams))
-
-        if group_items:
+        for title, items in sections:
             if lines:
                 lines.append("")
-            lines.append("🏠 本群专属")
+            lines.append(title)
             for (name, emoji, price, desc, _cat, satiety_bonus, style_prompt,
-                 style_duration, body_food, body_kind, body_grams) in group_items:
+                 style_duration, body_food, body_kind, body_grams) in items:
                 lines.extend(_item_line(name, emoji, price, desc, satiety_bonus,
                                         style_prompt, style_duration,
                                         body_food, body_kind, body_grams))

@@ -5,6 +5,20 @@
 本插件是 [pan-ice/feed-bot](https://github.com/pan-ice/feed-bot)（投喂插件，MIT）的改造版，
 上游基线为 v1.3.0；下方按时间倒序记录 fork 之后的变更。
 
+## 1.8.0 — 2026-11-16
+
+- **WebUI「身体联动管理」页**（custom 页 `webui/mapping.html`，侧边栏设置分组）：
+  - 映射总览表：全部在售道具的映射词/类型/克数/✓✗ 解析校验，**行内编辑、保存即时生效**；
+  - 智能候选：输入框挂身体词表 datalist（311 食物 + 473 别名），页内即时解析校验（与身体语义一致）；
+  - **一键新建联动道具**：名称/价格/emoji/描述/饱食度 + 映射词/类型/克数一个表单完成（全局商店）；
+  - 顶部身体状态 pill（睡眠/胃容量/血糖/饥饿）与 总数/已映射/待修 统计。
+  - 新增 `webui_api.py`（3 个 `@API` public=False：`webui_mapping_overview/set`、`webui_item_create`）
+    与 `webui.json`（schema v2，required_capabilities 仅 custom_pages）。
+  - ⚠ 坏 `webui.json` 会导致插件整个注册失败——本页已按 Host 1.3.9+ / SDK 2.14+ 校验规则逐条核对。
+- **商店分区**：`/商店` 把带映射的道具自动归入「🫀 身体食堂」分区（全局/群内各自保留），
+  文本菜单与图片菜单同步；图片菜单渲染重构为任意分区列表（`render_shop_menu_png(sections)`）。
+- 兼容性：未映射道具渲染与结算不变；WebUI 页不改变任何命令行为（命令保留）。
+
 ## 1.7.1 — 2026-11-16
 
 - **省道具模式（预检门卫）**：映射道具投喂改为**先问身体再扣道具**——睡着 / BAC 超标 /

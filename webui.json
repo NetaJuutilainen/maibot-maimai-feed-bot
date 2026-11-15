@@ -1,0 +1,42 @@
+{
+  "schema_version": 2,
+  "required_capabilities": [
+    "custom_pages"
+  ],
+  "workspace_title": "麦麦要吃那个！",
+  "pages": [
+    {
+      "mode": "custom",
+      "id": "mapping",
+      "title": "身体联动管理",
+      "description": "道具映射到麦麦身体的食物：总览、行内编辑、定食组合、克数与解析校验",
+      "icon": "settings",
+      "entry": "webui/mapping.html",
+      "layout": "document",
+      "queries": {
+        "overview": {
+          "api": "webui_mapping_overview",
+          "version": "1",
+          "parameters": {
+            "refresh": {
+              "type": "integer",
+              "required": false,
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        }
+      },
+      "actions": {
+        "set_mapping": {
+          "api": "webui_mapping_set",
+          "version": "1"
+        },
+        "create_item": {
+          "api": "webui_item_create",
+          "version": "1"
+        }
+      }
+    }
+  ]
+}

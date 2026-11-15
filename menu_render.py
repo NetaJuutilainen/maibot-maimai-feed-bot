@@ -188,14 +188,14 @@ def _effect_text(style_prompt: str, style_duration_minutes: int) -> str:
 
 
 def render_shop_menu_png(
-    global_items: list[tuple[Any, ...]],
-    group_items: list[tuple[Any, ...]],
+    sections: list[tuple[str, list[tuple[Any, ...]]]],
     *,
     max_batch: int = 99,
 ) -> bytes:
     """渲染商店菜单 PNG。
 
-    行元组字段序与 handle_shop 的查询一致：
+    sections：[(分区标题, 行列表), ...]，空分区自动跳过。行元组字段序与
+    handle_shop 的查询一致：
     (name, emoji, price, description, category, satiety_bonus,
      style_prompt, style_duration_minutes[, body_food, body_kind, body_grams])
     （后三列 1.7.1 起新增，身体映射标注；缺省按纯游戏道具渲染）
@@ -258,9 +258,12 @@ def render_shop_menu_png(
                 "has_style": bool(prompt),
             })
 
-    parse(global_items)
-    group_start = len(parsed)
-    parse(group_items)
+    sec_ranges: list[tuple[str, int, int]] = []
+    for title, items in sections:
+        start = len(parsed)
+        parse(items)
+        if len(parsed) > start:
+            sec_ranges.append((title, start, len(parsed)))
 
     # emoji 区宽度：取所有行 emoji 串的最大渲染宽度（多 emoji 串如 🈲🔞🍆 会很宽，
     # 统一按最宽对齐，避免压到名称；上限 230 防极端数据拉爆版面）
@@ -287,9 +290,9 @@ def render_shop_menu_png(
         heights.append(h)
 
     # 行间分节空隙 + 分节标题高度（两段各 48px，必须计入画布总高，否则末行被裁）
-    gaps = 22 if (global_items and group_items) else 0
-    n_sections = (1 if global_items else 0) + (1 if group_items else 0)
-    H = _HEAD_H + sum(heights) + gaps + 48 * n_sections + _FOOT_H
+    n_sections = len(sec_ranges)
+    separators = max(0, n_sections - 1)
+    H = _HEAD_H + sum(heights) + 20 * separators + 48 * n_sections + _FOOT_H
     img = Image.new("RGB", (_IMG_W, H), _COLOR_BG)
     d = ImageDraw.Draw(img)
 
@@ -310,7 +313,8 @@ def render_shop_menu_png(
 
     def draw_items(y: float, rows: list[int], section: str | None) -> float:
         if section:
-            emoji_at("🌐" if "全局" in section else "🏠", 36, y + 12, f_emoji_sm)
+            icon = "🫀" if "身体食堂" in section else ("🌐" if "全局" in section else "🏠")
+            emoji_at(icon, 36, y + 12, f_emoji_sm)
             d.text((92, y + 12), section, font=f_section, fill=_COLOR_MAIN)
             y += 48
         for idx in rows:
@@ -356,11 +360,14 @@ def render_shop_menu_png(
             y += h
         return y
 
-    y = draw_items(_HEAD_H, list(range(group_start)), "全局道具" if global_items else None)
-    if global_items and group_items:
-        d.line([0, y + 8, _IMG_W, y + 8], fill=_COLOR_ROW_LINE, width=2)
-        y += 20
-    y = draw_items(y, list(range(group_start, len(parsed))), "本群专属" if group_items else None)
+    y = _HEAD_H
+    first_section = True
+    for title, s, e in sec_ranges:
+        if not first_section:
+            d.line([0, y + 8, _IMG_W, y + 8], fill=_COLOR_ROW_LINE, width=2)
+            y += 20
+        y = draw_items(y, list(range(s, e)), title)
+        first_section = False
 
     # 注脚
     y += 8
@@ -373,12 +380,11 @@ def render_shop_menu_png(
 
 
 def render_shop_menu_base64(
-    global_items: list[tuple[Any, ...]],
-    group_items: list[tuple[Any, ...]],
+    sections: list[tuple[str, list[tuple[Any, ...]]]],
     *,
     max_batch: int = 99,
 ) -> str:
     """渲染并返回 PNG 的 base64（供 ctx.send.image 使用）。"""
     return base64.b64encode(
-        render_shop_menu_png(global_items, group_items, max_batch=max_batch)
+        render_shop_menu_png(sections, max_batch=max_batch)
     ).decode()

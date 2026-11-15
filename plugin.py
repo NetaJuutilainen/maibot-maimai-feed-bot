@@ -21,10 +21,11 @@ from .config import FeedBotConfig, STYLE_CLEAR_ALL_MARKER
 from .db import AsyncDatabase
 from .loops import LoopTasksMixin
 from .utils import LEGACY_DB_PATH, PLUGIN_DIR
+from .webui_api import WebUIApiMixin
 
 
 class FeedBotPlugin(
-    MaiBotPlugin, UserCommandsMixin, AdminCommandsMixin, LoopTasksMixin
+    MaiBotPlugin, UserCommandsMixin, AdminCommandsMixin, LoopTasksMixin, WebUIApiMixin
 ):
     """投喂插件：签到积分+商店道具+投喂Bot+定时求投喂。"""
 
