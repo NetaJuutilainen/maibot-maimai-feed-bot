@@ -281,7 +281,8 @@ class UserCommandsMixin:
         global_items = await self.db.execute(
             """
             SELECT name, emoji, price, description, category, satiety_bonus,
-                   style_prompt, style_duration_minutes
+                   style_prompt, style_duration_minutes,
+                   body_food, body_kind, body_grams
             FROM shop_items
             WHERE scope = 'global' AND is_on_sale = 1
             ORDER BY price ASC
@@ -293,7 +294,8 @@ class UserCommandsMixin:
             group_items = await self.db.execute(
                 """
                 SELECT name, emoji, price, description, category, satiety_bonus,
-                       style_prompt, style_duration_minutes
+                       style_prompt, style_duration_minutes,
+                       body_food, body_kind, body_grams
                 FROM shop_items
                 WHERE scope = 'group' AND group_id = ? AND is_on_sale = 1
                 ORDER BY price ASC
@@ -331,6 +333,9 @@ class UserCommandsMixin:
             satiety_bonus: float,
             style_prompt: str,
             style_duration_minutes: int,
+            body_food: str = "",
+            body_kind: str = "",
+            body_grams: float = 0.0,
         ) -> list[str]:
             display = f"{emoji}{name}" if emoji else name
             desc_part = f" — {desc}" if desc else ""
@@ -348,21 +353,37 @@ class UserCommandsMixin:
             else:
                 effect_text = "无特殊效果"
             out.append(f"  [效果：{effect_text}]")
+            if str(body_food or "").strip():
+                kind_word = {"meal": "套餐", "drink": "饮品"}.get(
+                    str(body_kind or "").strip() or "snack", "食物"
+                )
+                try:
+                    g = float(body_grams or 0.0)
+                except (TypeError, ValueError):
+                    g = 0.0
+                g_note = f"·{g:g}g" if g > 0 else ""
+                out.append(f"  [🫀 身体联动：{body_food}·{kind_word}{g_note}]")
             return out
 
         lines: list[str] = []
 
         if global_items:
             lines.append("🌐 全局道具")
-            for name, emoji, price, desc, _cat, satiety_bonus, style_prompt, style_duration in global_items:
-                lines.extend(_item_line(name, emoji, price, desc, satiety_bonus, style_prompt, style_duration))
+            for (name, emoji, price, desc, _cat, satiety_bonus, style_prompt,
+                 style_duration, body_food, body_kind, body_grams) in global_items:
+                lines.extend(_item_line(name, emoji, price, desc, satiety_bonus,
+                                        style_prompt, style_duration,
+                                        body_food, body_kind, body_grams))
 
         if group_items:
             if lines:
                 lines.append("")
             lines.append("🏠 本群专属")
-            for name, emoji, price, desc, _cat, satiety_bonus, style_prompt, style_duration in group_items:
-                lines.extend(_item_line(name, emoji, price, desc, satiety_bonus, style_prompt, style_duration))
+            for (name, emoji, price, desc, _cat, satiety_bonus, style_prompt,
+                 style_duration, body_food, body_kind, body_grams) in group_items:
+                lines.extend(_item_line(name, emoji, price, desc, satiety_bonus,
+                                        style_prompt, style_duration,
+                                        body_food, body_kind, body_grams))
 
         if lines:
             lines.append("")
@@ -552,6 +573,59 @@ class UserCommandsMixin:
 
         uid = self.db.user_key(user_id, group_id)
 
+        # ---- 身体预检（省道具模式）：映射道具在扣道具之前先过门卫 ----
+        # 预检拒收（睡着/BAC 超标/胃满/份数为 0）→ 整单礼貌拒绝，道具不消耗；
+        # 通过则 take = 身体实际能接受的份数，事务只扣这么多（剩余份数留在背包）。
+        # 预检不可用（身体没装/没开/超时）→ 按纯游戏结算，行为与旧版一致
+        body_pre: dict[str, Any] | None = None
+        if self._body_link.body_enabled():
+            try:
+                pre_item = await self.db.find_shop_item(item_name, group_id)
+            except Exception:
+                pre_item = None
+            if pre_item is not None and str(pre_item.get("body_food") or "").strip():
+                word = str(pre_item["body_food"]).strip()
+                kind = str(pre_item.get("body_kind") or "").strip().lower()
+                if kind not in ("meal", "snack", "drink"):
+                    kind = "snack"
+                try:
+                    grams = max(float(pre_item.get("body_grams") or 0.0), 0.0)
+                except Exception:
+                    grams = 0.0
+                try:
+                    pre = await self._body_link.precheck(
+                        word=word, kind=kind, requested=requested_quantity, grams=grams
+                    )
+                except Exception as exc:  # noqa: BLE001 — 联动失败绝不打断投喂主流程
+                    self.ctx.logger.debug(f"身体预检失败，按纯游戏结算: {exc}")
+                    pre = {"status": "unavailable", "take": requested_quantity}
+                if pre["status"] == "sleeping":
+                    await self.ctx.send.text(
+                        "🌙 她已经睡着了……这份心意先留着，明天再喂吧（道具未消耗）",
+                        stream_id,
+                    )
+                    return False, "身体睡觉拒收", True
+                if pre["status"] == "bac_high":
+                    await self.ctx.send.text(
+                        "😵 她已经醉得不省人事了，别再灌啦（道具未消耗）",
+                        stream_id,
+                    )
+                    return False, "身体BAC拒收", True
+                if pre["status"] == "full" or int(pre.get("take") or 0) <= 0:
+                    await self.ctx.send.text(
+                        "😮‍💨 她的胃已经装不下了，一口都吃不动（道具未消耗）",
+                        stream_id,
+                    )
+                    return False, "身体胃满拒收", True
+                if pre["status"] == "ok":
+                    body_pre = {
+                        "take": int(pre["take"]),
+                        "word": word,
+                        "kind": kind,
+                        "grams": grams,
+                    }
+                # status == unavailable → body_pre 保持 None：映射道具按纯游戏结算
+
         # 在事务中原子完成：校验库存 + 扣背包 + 更新饱食度和投喂记录
         def _feed_tx(
             cursor: Any,
@@ -613,17 +687,22 @@ class UserCommandsMixin:
             else:
                 current_satiety = self.config.bot_attr.initial_satiety
 
-            # 3. 正饱食度道具只消耗当前还能吃下的数量。
-            #    带身体映射的道具跳过数字层满判定与容量截断：「能不能吃」由身体门卫决定
-            #    （睡着/胃容量/BAC），未映射道具把数字刷满也不挡联动道具进身体
-            if satiety_bonus > 0:
-                if current_satiety >= 100 and not body_food:
+            # 3. 计算本次消耗份数：
+            #    - 映射道具且预检通过：只消耗身体实际接受的份数（省道具；剩余留背包）
+            #    - 未映射正饱食度道具：满值拒收 + 容量截断（旧规则）
+            #    - 负饱食度道具：全量消耗
+            if body_pre is not None:
+                consumed_quantity = max(
+                    0,
+                    min(requested_quantity, int(body_pre["take"]), inventory_quantity),
+                )
+                if consumed_quantity <= 0:
                     raise _Rollback()
-                if body_food:
-                    consumed_quantity = requested_quantity
-                else:
-                    capacity_quantity = math.ceil((100.0 - current_satiety) / satiety_bonus)
-                    consumed_quantity = min(requested_quantity, capacity_quantity)
+            elif satiety_bonus > 0:
+                if current_satiety >= 100:
+                    raise _Rollback()
+                capacity_quantity = math.ceil((100.0 - current_satiety) / satiety_bonus)
+                consumed_quantity = min(requested_quantity, capacity_quantity)
             else:
                 consumed_quantity = requested_quantity
 
@@ -742,17 +821,18 @@ class UserCommandsMixin:
                     max_n = 3
                 style_note = f"\n（投喂效果已达上限 {max_n} 个，本次风格未生效）"
 
-        # 身体联动（可选，[linkage].body_enabled）：映射道具投喂 → 门卫 → log_meal 真的吃进身体。
-        # 门卫拒收/降级不影响游戏层结算（道具已消耗、饱食度已记），只在回复里说明身体实况
+        # 身体联动（可选，[linkage].body_enabled）：预检通过的映射道具 → log_meal 真的吃进身体。
+        # 份数 = 预检通过的数量 = 事务消耗的数量（省道具：道具不白扣）
         body_result: dict[str, Any] | None = None
         body_line = ""
         body_prompt = ""
-        if consumed_quantity > 0 and self._body_link.body_enabled() and body_food:
+        if consumed_quantity > 0 and body_pre is not None:
             try:
-                body_result = await self._body_link.feed_to_body(
-                    word=body_food,
-                    kind=body_kind or "snack",
-                    servings=consumed_quantity,
+                body_result = await self._body_link.execute(
+                    word=body_pre["word"],
+                    kind=body_pre["kind"],
+                    take=consumed_quantity,
+                    grams=body_pre["grams"],
                     note=f"群友{nickname or user_id}投喂",
                     request_id=f"feed-{record_id}",
                 )
@@ -761,11 +841,12 @@ class UserCommandsMixin:
             body_line = self._body_link.describe_feed_result(body_result, consumed_quantity)
             body_prompt = self._body_link.feed_prompt_note(body_result, f"{emoji}{name}")
             self.ctx.logger.info(
-                "身体联动结算：%s x%s（映射→%s/%s）status=%s",
+                "身体联动结算：%s x%s（映射→%s/%s g=%s）status=%s",
                 name,
                 consumed_quantity,
-                body_food,
-                body_kind or "snack",
+                body_pre["word"],
+                body_pre["kind"],
+                body_pre["grams"],
                 body_result.get("status"),
             )
 

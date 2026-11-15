@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Any
 
@@ -107,7 +108,8 @@ class BodyLinkClient:
         """拉取并缓存身体食物词表。
 
         返回 {"keys": set[str], "labels": {key: label}, "volumes": {key: ml},
-        "aliases": {alias: key}}；拿不到返回 None（保留旧缓存供降级使用）。
+        "base_grams": {key: g}, "aliases": {alias: key}}；拿不到返回 None
+        （保留旧缓存供降级使用）。
         """
         try:
             ttl_min = max(float(self._p.config.linkage.food_cache_minutes), 1.0)
@@ -123,10 +125,12 @@ class BodyLinkClient:
         raw = await self._call(f"{self._body_pid()}.list_foods")
         if not isinstance(raw, dict) or not raw.get("ok"):
             return self._foods  # 拉不到就用旧缓存
-        items = raw.get("items") or raw.get("foods") or []
+        # foods 行带 default_portion（"一碗 200 g 熟"），可解析基准克数；items 行没有
+        items = raw.get("foods") or raw.get("items") or []
         keys: set[str] = set()
         labels: dict[str, str] = {}
         volumes: dict[str, float] = {}
+        base_grams: dict[str, float] = {}
         for row in items:
             if not isinstance(row, dict):
                 continue
@@ -136,6 +140,8 @@ class BodyLinkClient:
             keys.add(key)
             labels[key] = str(row.get("label") or key)
             volumes[key] = _num(row.get("volume_ml"), 0.0)
+            base_grams[key] = self._portion_base_grams(str(row.get("default_portion") or ""),
+                                                       _num(row.get("volume_ml"), 0.0))
         aliases: dict[str, str] = {}
         for word, target in (raw.get("aliases") or {}).items():
             if isinstance(target, list):
@@ -146,10 +152,25 @@ class BodyLinkClient:
             "keys": keys,
             "labels": labels,
             "volumes": volumes,
+            "base_grams": base_grams,
             "aliases": aliases,
         }
         self._foods_ts = time.time()
         return self._foods
+
+    @staticmethod
+    def _portion_base_grams(portion_text: str, fallback_ml: float) -> float:
+        """从 portion 字符串抠基准克数（"一碗 200 g 熟"→200），抠不出退 volume_ml。
+
+        与 body 侧 _portion_base_grams 的解析语义保持一致。
+        """
+        m = re.search(r"(\d+(?:\.\d+)?)\s*(?:g|克|ml|mL|毫升)", str(portion_text or ""))
+        if m:
+            try:
+                return max(1.0, float(m.group(1)))
+            except (TypeError, ValueError):
+                pass
+        return max(1.0, fallback_ml) if fallback_ml > 0 else 100.0
 
     def invalidate_foods(self) -> None:
         """配置热重载时清缓存，下次用时重拉。"""
@@ -241,93 +262,126 @@ class BodyLinkClient:
     # 写入：门卫 + log_meal
     # ------------------------------------------------------------------
 
-    async def feed_to_body(
-        self,
-        *,
-        word: str,
-        kind: str,
-        servings: int,
-        note: str,
-        request_id: str,
-    ) -> dict[str, Any]:
-        """把一次投喂写进身体（先过门卫，再调 log_meal）。
+    def split_words(self, word: str) -> list[str]:
+        """把映射词拆成食物词列表（支持逗号组合映射，如「米饭,猪肉,青菜」定食）。"""
+        return [p.strip() for p in str(word or "").replace("，", ",").split(",") if p.strip()]
 
-        返回 {"status": ..., ...}，status 取值：
-        ok / partial / sleeping / bac_high / full / unrecognized / unavailable / error
-        （partial 目前与 ok 同义，预留容量收紧场景）。
+    def resolve_words(self, word: str) -> list[str] | None:
+        """逐个解析组合映射词；任一认不出返回 None（全对返回 key 列表）。"""
+        foods = self._foods
+        keys: list[str] = []
+        for part in self.split_words(word):
+            key = self.resolve(part)
+            if key is None:
+                return None
+            keys.append(key)
+        return keys
+
+    def _per_unit_ml(self, word: str, grams: float) -> float:
+        """单份占用的胃容量（mL）：组合词 = 各部分之和；设了克数按 克数/基准克数 缩放。"""
+        foods = self._foods
+        total = 0.0
+        for part in self.split_words(word):
+            key = self.resolve(part) if foods else None
+            vol = _num(foods["volumes"].get(key, 0.0), 0.0) if (foods and key) else 0.0
+            if grams > 0 and foods and key:
+                base = _num(foods["base_grams"].get(key, 0.0), 0.0)
+                if base > 0:
+                    vol = vol * (grams / base)
+            total += vol
+        return total
+
+    async def precheck(
+        self, *, word: str, kind: str, requested: int, grams: float = 0.0
+    ) -> dict[str, Any]:
+        """省道具模式：扣道具前先问身体。返回 {"status", "take", ...}。
+
+        status：ok（take=身体实际能接受的份数）/ sleeping / bac_high / full /
+        unrecognized / unavailable（take=requested，降级为纯游戏结算）。
         """
-        cfg = self._p.config.linkage
         try:
-            max_servings = max(int(getattr(cfg, "max_servings_per_feed", 3)), 1)
+            max_servings = max(int(getattr(self._p.config.linkage, "max_servings_per_feed", 3)), 1)
         except Exception:
             max_servings = 3
         try:
-            max_bac = max(float(getattr(cfg, "max_bac", 0.25)), 0.0)
+            max_bac = max(float(getattr(self._p.config.linkage, "max_bac", 0.25)), 0.0)
         except Exception:
             max_bac = 0.25
 
         state = await self.get_state()
         if not state:
-            return {"status": "unavailable"}
+            return {"status": "unavailable", "take": max(1, int(requested))}
 
-        # 门卫 1：睡着不吃
+        # 门卫 1：睡着不吃（整单拒，道具不消耗）
         if bool(state.get("sleeping")):
-            return {"status": "sleeping", "state": state}
+            return {"status": "sleeping", "take": 0, "state": state}
 
-        # 门卫 2：血酒精浓度过高（阈值可配，剧情化拒收）
+        # 门卫 2：血酒精浓度过高
         bac = _num(state.get("bac"), 0.0)
         if max_bac > 0 and bac >= max_bac:
-            return {"status": "bac_high", "bac": bac, "state": state}
+            return {"status": "bac_high", "bac": bac, "take": 0, "state": state}
 
-        # 门卫 3：份数上限（事件上限 × 胃容量余量换算）
-        take = max(1, min(int(servings), max_servings))
-        if kind in ("snack", "drink"):
-            key = self.resolve(word)
-            vol = self._foods["volumes"].get(key, 0.0) if key and self._foods else 0.0
-            if vol > 0:
+        # 门卫 3：词表解析（组合词逐个校验）
+        if self.resolve_words(word) is None:
+            return {"status": "unrecognized", "take": 0, "state": state}
+
+        # 门卫 4：份数 = min(请求, 单次上限, 胃容量余量换算)
+        take = max(1, min(int(requested), max_servings))
+        if kind != "meal":
+            per_unit = self._per_unit_ml(word, grams)
+            if per_unit > 0:
                 remaining = max(
                     0.0,
                     STOMACH_CAPACITY_ML - _num(state.get("gastric_volume_ml"), 0.0),
                 )
-                fit = int(remaining // vol)
+                fit = int(remaining // per_unit)
                 if fit < take:
                     take = max(fit, 0)
         if take <= 0:
-            return {"status": "full", "state": state}
+            return {"status": "full", "take": 0, "state": state}
+        return {"status": "ok", "take": take, "state": state, "word": word,
+                "kind": kind, "grams": grams}
+
+    async def execute(
+        self, *, word: str, kind: str, take: int, grams: float = 0.0,
+        note: str = "", request_id: str = "",
+    ) -> dict[str, Any]:
+        """把预检通过的份数写进身体（log_meal）。返回 {"status", ...}。
+
+        克数 >0 时按 {"label", "amount_g"} 记账（body 按克换算比例，跳过补到七分饱）；
+        组合词按份重复整组食材。
+        """
+        parts = self.split_words(word)
+        if grams > 0:
+            items_payload: list[dict[str, Any]] = [
+                {"label": part, "amount_g": grams}
+                for _ in range(max(1, int(take)))
+                for part in parts
+            ]
+        else:
+            items_payload = ",".join([",".join(parts)] * max(1, int(take)))
 
         result = await self._call(
             f"{self._body_pid()}.log_meal",
-            items=",".join([word] * take),
+            items=items_payload,
             kind=kind if kind in _BODY_KINDS else "snack",
             portion=1.0,
             note=str(note or "")[:200],
             request_id=str(request_id or "")[:80],
         )
         if not isinstance(result, dict):
-            return {"status": "error", "error": "调用无返回", "state": state, "servings": take}
+            return {"status": "error", "error": "调用无返回"}
         if result.get("duplicate"):
-            return {"status": "ok", "duplicate": True, "servings": 0, "state": state}
+            return {"status": "ok", "duplicate": True, "servings": 0, "result": result}
         if not result.get("ok"):
             rejected = result.get("rejected") or []
             if any(isinstance(r, dict) and r.get("reason") == "unknown_food" for r in rejected):
-                return {
-                    "status": "unrecognized",
-                    "rejected": rejected,
-                    "state": state,
-                    "servings": take,
-                }
-            return {
-                "status": "error",
-                "error": str(result.get("error") or "未知错误"),
-                "state": state,
-                "servings": take,
-            }
-
+                return {"status": "unrecognized", "rejected": rejected, "result": result}
+            return {"status": "error", "error": str(result.get("error") or "未知错误"), "result": result}
         return {
             "status": "ok",
             "result": result,
             "servings": take,
-            "state": state,
             "after_state": result.get("state") or {},
             "delta": result.get("delta") or {},
         }
@@ -373,7 +427,7 @@ class BodyLinkClient:
         )
 
     def describe_feed_result(self, result: dict[str, Any], requested: int) -> str:
-        """把门卫/记账结果压成发到群里的一行短说明。"""
+        """把记账结果压成发到群里的一行短说明（预检拒收不会走到这里）。"""
         status = str(result.get("status") or "")
         after = result.get("after_state") or {}
         if status == "ok":
@@ -384,19 +438,12 @@ class BodyLinkClient:
                     f"，胃 {_num(after.get('gastric_volume_ml'), 0.0):.0f}mL，"
                     f"饥饿 {_num(after.get('hunger'), 0.0):.0f}/100"
                 )
-            packed = requested - take
-            pack_note = f"（剩下 {packed} 份打包留到明天啦）" if packed > 0 else ""
-            return f"🫀 身体：真的吃下了 x{take}{extra}{pack_note}"
-        if status == "sleeping":
-            return "🫀 身体：🌙 睡着了，没有真的吃（投喂已照常结算；等她醒了再喂吧）"
-        if status == "bac_high":
-            return f"🫀 身体：已经醉得不省人事了（BAC {result.get('bac', 0):.2f}），别再灌了（没有真的吃）"
-        if status == "full":
-            return "🫀 身体：胃已经装不下了，一口都吃不动（没有真的吃）"
+            return f"🫀 身体：真的吃下了 x{take}{extra}"
         if status == "unrecognized":
             return "🫀 身体：食物词表里认不出这个映射，没有真的吃（请管理员检查 /投喂管理 映射列表）"
-        if status == "unavailable":
-            return "🫀 身体：暂时联系不上麦麦身体，这份没有计入身体（投喂本身照常）"
+        if status == "error":
+            err = str(result.get("error") or "")[:60]
+            return f"🫀 身体：这次记账没成功（{err}）；投喂本身照常"
         return "🫀 身体：这次记账没成功（投喂本身照常）"
 
     def feed_prompt_note(self, result: dict[str, Any], item_display: str) -> str:
@@ -417,16 +464,10 @@ class BodyLinkClient:
                     f"（{self.hunger_word(_num(after.get('hunger'), 20.0))}）、"
                     f"精力 {_num(after.get('energy'), 0.0):.0f}/100。"
                 )
-        elif status == "sleeping":
-            lines.append("但你当时正在睡觉，这份投喂没有真的吃下去（游戏层已照常结算消耗，身体没有吃到）。请表现出睡意或委婉拒绝，可以约定醒来再吃。")
-        elif status == "bac_high":
-            lines.append(f"你此刻血酒精浓度 {result.get('bac', 0):.2f}，已经醉得不行，这份被拒绝了。请用醉汉的语气表达喝不动了。")
-        elif status == "full":
-            lines.append("你的胃已经满了，这份真的吃不下（对方保留了道具）。请表现出撑到不行。")
         elif status == "unrecognized":
             lines.append("这份投喂没有进入身体模型（食物词表认不出）。请正常感谢投喂即可，不要编造身体感受。")
         else:
-            lines.append("身体模型暂时不可用，本次投喂只做了游戏层结算。请正常感谢投喂，不要编造具体身体数值。")
+            lines.append("身体模型这次记账没成功。请正常感谢投喂，不要编造具体身体数值。")
         lines.append("以上是仿真的生理参考，请把数值化作自然感受，不要逐字复述数值。")
         return "\n".join(lines)
 

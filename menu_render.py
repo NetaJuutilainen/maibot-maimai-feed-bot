@@ -197,7 +197,8 @@ def render_shop_menu_png(
 
     行元组字段序与 handle_shop 的查询一致：
     (name, emoji, price, description, category, satiety_bonus,
-     style_prompt, style_duration_minutes)
+     style_prompt, style_duration_minutes[, body_food, body_kind, body_grams])
+    （后三列 1.7.1 起新增，身体映射标注；缺省按纯游戏道具渲染）
     """
     from PIL import Image, ImageDraw
 
@@ -218,7 +219,11 @@ def render_shop_menu_png(
     parsed: list[dict[str, Any]] = []
 
     def parse(items: list[tuple[Any, ...]]) -> None:
-        for name, emoji, price, desc, _cat, sat, style_prompt, style_dur in items:
+        for row in items:
+            name, emoji, price, desc, _cat, sat, style_prompt, style_dur = row[:8]
+            body_food = str(row[8] or "").strip() if len(row) > 8 else ""
+            body_kind = str(row[9] or "").strip() if len(row) > 9 else ""
+            body_grams = row[10] if len(row) > 10 else 0.0
             prompt = str(style_prompt or "").strip()
             if prompt == STYLE_CLEAR_ALL_MARKER:
                 tag, tagkind = STYLE_CLEAR_ALL_LABEL, "clear"
@@ -227,6 +232,20 @@ def render_shop_menu_png(
             else:
                 tag, tagkind = "无特殊效果", "plain"
             effect = _effect_text(style_prompt, style_dur)
+            # 身体映射标注（联动道具：吃下去真的进身体模型）
+            if body_food:
+                kind_word = {"meal": "套餐", "drink": "饮品"}.get(
+                    body_kind or "snack", "食物"
+                )
+                try:
+                    g = float(body_grams or 0.0)
+                except (TypeError, ValueError):
+                    g = 0.0
+                g_note = f"·{g:g}g" if g > 0 else ""
+                body_part = f"🫀 进身体：{body_food}·{kind_word}{g_note}"
+                effect = body_part if effect == "无特殊效果" else f"{effect}；{body_part}"
+                if tagkind == "plain":
+                    tag, tagkind = "🫀 联动道具", "style"
             parsed.append({
                 "emoji": str(emoji or ""),
                 "name": str(name),

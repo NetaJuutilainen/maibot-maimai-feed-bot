@@ -379,6 +379,12 @@ class AsyncDatabase:
             )
         except sqlite3.OperationalError:
             pass  # 列已存在
+        try:
+            self._db.execute(
+                "ALTER TABLE shop_items ADD COLUMN body_grams REAL NOT NULL DEFAULT 0"
+            )
+        except sqlite3.OperationalError:
+            pass  # 列已存在
 
     def _migrate_group_enabled_authorization(self) -> None:
         """一次性将旧版 enabled 占位值迁移为真实群授权状态。"""
@@ -750,12 +756,19 @@ class AsyncDatabase:
     # ---- 身体映射（联动） ----
 
     async def set_item_body_mapping(
-        self, item_id: int, body_food: str, body_kind: str = ""
+        self, item_id: int, body_food: str, body_kind: str = "", body_grams: float = 0.0
     ) -> None:
-        """写入/清除某个道具的身体映射（body_food 空串 = 解除映射，恢复纯游戏道具）。"""
+        """写入/清除某个道具的身体映射（body_food 空串 = 解除映射，恢复纯游戏道具）。
+
+        body_grams > 0 时按克记账（body 以 食物基准克数 换算比例）；0 = 默认一份。
+        """
+        try:
+            grams = max(0.0, float(body_grams))
+        except (TypeError, ValueError):
+            grams = 0.0
         await self.execute_commit(
-            "UPDATE shop_items SET body_food = ?, body_kind = ? WHERE item_id = ?",
-            (str(body_food or "").strip(), str(body_kind or "").strip(), int(item_id)),
+            "UPDATE shop_items SET body_food = ?, body_kind = ?, body_grams = ? WHERE item_id = ?",
+            (str(body_food or "").strip(), str(body_kind or "").strip(), grams, int(item_id)),
         )
 
     async def get_body_mapping_overview(self, group_id: str) -> list[dict[str, Any]]:
@@ -763,7 +776,7 @@ class AsyncDatabase:
         rows = await self.execute(
             """
             SELECT item_id, name, emoji, scope, group_id, satiety_bonus,
-                   body_food, body_kind
+                   body_food, body_kind, body_grams
             FROM shop_items
             WHERE is_on_sale = 1 AND (scope = 'global' OR (scope = 'group' AND group_id = ?))
             ORDER BY scope DESC, name
@@ -782,6 +795,7 @@ class AsyncDatabase:
                     "satiety_bonus": row[5],
                     "body_food": row[6] or "",
                     "body_kind": row[7] or "",
+                    "body_grams": row[8] or 0.0,
                 }
             )
         return overview

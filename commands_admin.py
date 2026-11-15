@@ -1109,7 +1109,8 @@ class AdminCommandsMixin:
         description="把道具映射到身体食物词（联动：投喂后真的吃进身体）",
         pattern=(
             r"^/投喂管理\s+映射\s+(?P<item_name>\S+)"
-            r"(?:\s+(?P<food_word>\S+))?(?:\s+(?P<kind>meal|snack|drink))?\s*$"
+            r"(?:\s+(?P<food_word>\S+))?(?:\s+(?P<kind>meal|snack|drink))?"
+            r"(?:\s+(?P<grams>\d+(?:\.\d+)?))?\s*$"
         ),
     )
     async def handle_admin_body_map(
@@ -1122,7 +1123,8 @@ class AdminCommandsMixin:
         """处理 /投喂管理 映射 命令。
 
         不带食物词 → 返回身体词表的候选词（模糊匹配道具名）；
-        带食物词   → 本地按身体的解析语义校验，通过才写入。
+        带食物词   → 本地按身体的解析语义校验（支持逗号组合 = 套餐/定食），通过才写入；
+        可选克数   → 按克记账（body 以食物基准克数换算比例，小克数 = 小份，能喂更多口）。
         """
         matched_groups = kwargs.get("matched_groups")
         if not isinstance(matched_groups, dict):
@@ -1130,6 +1132,7 @@ class AdminCommandsMixin:
         item_name = str(matched_groups.get("item_name") or "").strip()
         food_word = str(matched_groups.get("food_word") or "").strip()
         kind = str(matched_groups.get("kind") or "").strip().lower()
+        grams_str = str(matched_groups.get("grams") or "").strip()
 
         if not user_id:
             return False, "无法获取用户信息", True
@@ -1142,14 +1145,26 @@ class AdminCommandsMixin:
             return False, "非管理员", True
         if not item_name:
             await self.ctx.send.text(
-                "用法：/投喂管理 映射 <道具名> [食物词] [meal|snack|drink]\n"
-                "（食物词留空时返回候选；kind 留空默认 snack，饮品建议 drink）",
+                "用法：/投喂管理 映射 <道具名> [食物词] [meal|snack|drink] [每份克数]\n"
+                "（食物词留空时返回候选；kind 留空默认 snack，饮品建议 drink；\n"
+                "食物词支持逗号组合 = 套餐/定食，如「米饭,猪肉,青菜」；\n"
+                "克数留空 = 默认一份份量，设小值 = 小份，不容易一次喂饱）",
                 stream_id,
             )
             return False, "参数缺失", True
         if kind and kind not in self._BODY_KIND_SET:
             await self.ctx.send.text("类型只支持 meal / snack / drink", stream_id)
             return False, "类型无效", True
+        grams = 0.0
+        if grams_str:
+            try:
+                grams = float(grams_str)
+            except ValueError:
+                await self.ctx.send.text("克数必须是数字", stream_id)
+                return False, "克数格式错误", True
+            if not (0 < grams <= 3000):
+                await self.ctx.send.text("克数需在 0 < g ≤ 3000 之间", stream_id)
+                return False, "克数超出范围", True
 
         item, err = await self._resolve_mapping_target(item_name, group_id, user_id)
         if item is None:
@@ -1163,21 +1178,24 @@ class AdminCommandsMixin:
             tips = self._body_link.candidates(item_name, limit=5)
             lines = [f"🫀 「{item_name}」的身体映射候选（取自身体食物词表）："]
             lines += [f"  {i+1}. {w}" for i, w in enumerate(tips)] if tips else ["  （词表里没有相近的——可以直接写中文食物名，如：米饭 / 牛奶 / 啤酒）"]
-            lines.append("用法：/投喂管理 映射 {} <食物词> [meal|snack|drink]".format(item_name))
+            lines.append("用法：/投喂管理 映射 {} <食物词> [meal|snack|drink] [每份克数]".format(item_name))
             await self.ctx.send.text("\n".join(lines), stream_id)
             return True, "映射候选", True
 
-        # 带食物词：本地校验（与身体解析语义一致）
-        resolved = self._body_link.resolve(food_word)
-        label = ""
-        if resolved and self._body_link._foods:
-            label = self._body_link._foods["labels"].get(resolved, resolved)
-        await self.db.set_item_body_mapping(item["item_id"], food_word, kind)
-        valid = "✓ 身体可解析" if resolved else "⚠ 词表暂认不出（身体不在跑或词未收录；投喂时会再校验）"
+        # 带食物词：本地校验（与身体解析语义一致，支持逗号组合）
+        keys = self._body_link.resolve_words(food_word)
+        foods = self._body_link._foods
+        if keys and foods:
+            label = " + ".join(foods["labels"].get(k, k) for k in keys)
+        else:
+            label = food_word
+        await self.db.set_item_body_mapping(item["item_id"], food_word, kind, grams)
+        valid = "✓ 身体可解析" if keys else "⚠ 词表暂认不出（身体不在跑或词未收录；投喂时会再校验）"
         display = f"{item.get('emoji', '')}{item['name']}"
+        grams_note = f"，每份 {grams:g}g（小份）" if grams > 0 else "，默认份量"
         await self.ctx.send.text(
             f"✅ 「{display}」→ 身体食物「{food_word}」"
-            f"（解析为 {label or food_word}，类型 {kind or 'snack'}）\n{valid}",
+            f"（解析为 {label}，类型 {kind or 'snack'}{grams_note}）\n{valid}",
             stream_id,
         )
         return True, f"映射{item['name']}→{food_word}", True
@@ -1256,9 +1274,11 @@ class AdminCommandsMixin:
             if not word:
                 continue
             mapped += 1
-            ok = "✓" if self._body_link.resolve(word) else "✗"
+            ok = "✓" if self._body_link.resolve_words(word) else "✗"
             kind = entry["body_kind"] or "snack"
-            lines.append(f"  {ok} {display} → {word}（{kind}）[{scope_tag}]")
+            grams = float(entry.get("body_grams") or 0.0)
+            grams_note = f"·{grams:g}g" if grams > 0 else ""
+            lines.append(f"  {ok} {display} → {word}（{kind}{grams_note}）[{scope_tag}]")
         unmapped = len(overview) - mapped
         lines.append(f"共 {len(overview)} 件在售道具：已映射 {mapped}，未映射 {unmapped}（未映射 = 纯游戏道具，不影响身体）")
         await self.ctx.send.text("\n".join(lines), stream_id)
