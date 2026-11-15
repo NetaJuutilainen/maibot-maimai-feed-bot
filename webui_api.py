@@ -26,9 +26,9 @@ class WebUIApiMixin:
         rows = await self.db.execute(
             """
             SELECT item_id, name, emoji, price, description, satiety_bonus,
-                   scope, group_id, body_food, body_kind, body_grams
+                   scope, group_id, body_food, body_kind, body_grams, is_on_sale
             FROM shop_items
-            WHERE is_on_sale = 1
+            WHERE is_on_sale = 1 OR body_food != ''
             ORDER BY scope DESC, name
             """
         )
@@ -56,6 +56,7 @@ class WebUIApiMixin:
                     "body_food": word,
                     "body_kind": str(row[9] or "").strip() or "snack",
                     "body_grams": float(row[10] or 0.0),
+                    "is_on_sale": int(row[11] or 0),
                     "valid": valid,
                 }
             )
@@ -67,6 +68,7 @@ class WebUIApiMixin:
             except Exception:
                 body_state = None
 
+        groups = await self.db.get_enabled_group_ids()
         return {
             "ok": True,
             "items": items,
@@ -75,6 +77,7 @@ class WebUIApiMixin:
             "invalid_count": invalid,
             "body_enabled": self._body_link.body_enabled(),
             "body_state": body_state,
+            "groups": sorted(groups),
             "foods": {
                 "labels": foods.get("labels", {}),
                 "aliases": foods.get("aliases", {}),
@@ -130,7 +133,96 @@ class WebUIApiMixin:
             "labels": labels,
         }
 
-    @API("webui_item_create", description="WebUI：一键新建全局联动道具（上架+映射一步完成）", version="1")
+    @API("webui_item_save", description="WebUI：保存道具（价格/饱食度/emoji/描述 + 身体映射一起存）", version="1")
+    async def webui_item_save(
+        self,
+        item_id: int = 0,
+        price: int = 0,
+        satiety_bonus: float = 0.0,
+        emoji: str = "",
+        description: str = "",
+        body_food: str = "",
+        body_kind: str = "",
+        body_grams: float = 0.0,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """整行保存：游戏字段 + 身体映射一次写入。"""
+        del kwargs
+        item_id = int(item_id or 0)
+        row = await self.db.fetchone(
+            "SELECT item_id FROM shop_items WHERE item_id = ?", (item_id,)
+        )
+        if row is None:
+            return {"ok": False, "error": f"道具不存在（item_id={item_id}）"}
+        try:
+            price = int(price)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "价格必须是整数"}
+        if price < 0 or price > 1_000_000:
+            return {"ok": False, "error": "价格需在 0 ~ 1,000,000 之间"}
+        try:
+            sat = max(-1000.0, min(float(satiety_bonus), 1000.0))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "饱食度必须是数字"}
+        emoji = str(emoji or "").strip()[:8]
+        desc = str(description or "").strip()[:100]
+        word = str(body_food or "").strip()
+        kind = str(body_kind or "").strip().lower() or "snack"
+        if kind not in _BODY_KINDS:
+            return {"ok": False, "error": "类型只支持 meal / snack / drink"}
+        try:
+            grams = max(0.0, min(float(body_grams or 0.0), 3000.0))
+        except (TypeError, ValueError):
+            grams = 0.0
+
+        valid = None
+        labels: list[str] = []
+        if word:
+            await self._body_link.foods()
+            keys = self._body_link.resolve_words(word)
+            valid = keys is not None
+            if keys and self._body_link._foods:
+                labels = [self._body_link._foods["labels"].get(k, k) for k in keys]
+
+        await self.db.execute_commit(
+            """
+            UPDATE shop_items
+            SET price = ?, satiety_bonus = ?, emoji = ?, description = ?,
+                body_food = ?, body_kind = ?, body_grams = ?
+            WHERE item_id = ?
+            """,
+            (price, sat, emoji, desc, word, kind, grams, item_id),
+        )
+        return {
+            "ok": True,
+            "item_id": item_id,
+            "body_food": word,
+            "body_kind": kind,
+            "body_grams": grams,
+            "valid": valid,
+            "labels": labels,
+        }
+
+    @API("webui_item_toggle_sale", description="WebUI：上架/下架道具", version="1")
+    async def webui_item_toggle_sale(
+        self, item_id: int = 0, on_sale: int = 1, **kwargs: Any
+    ) -> dict[str, Any]:
+        """切换在售状态（1 上架 / 0 下架，软下架——数据保留）。"""
+        del kwargs
+        item_id = int(item_id or 0)
+        on_sale = 1 if int(on_sale or 0) == 1 else 0
+        row = await self.db.fetchone(
+            "SELECT item_id FROM shop_items WHERE item_id = ?", (item_id,)
+        )
+        if row is None:
+            return {"ok": False, "error": f"道具不存在（item_id={item_id}）"}
+        await self.db.execute_commit(
+            "UPDATE shop_items SET is_on_sale = ? WHERE item_id = ?",
+            (on_sale, item_id),
+        )
+        return {"ok": True, "item_id": item_id, "is_on_sale": on_sale}
+
+    @API("webui_item_create", description="WebUI：一键新建联动道具（上架+映射一步完成，可指定群）", version="1")
     async def webui_item_create(
         self,
         item_name: str = "",
@@ -141,9 +233,11 @@ class WebUIApiMixin:
         body_food: str = "",
         body_kind: str = "",
         body_grams: float = 0.0,
+        scope: str = "global",
+        group_id: str = "",
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """新建全局道具并（可选）同时写入身体映射。"""
+        """新建道具并（可选）同时写入身体映射。scope='global' 或 'group'（需 group_id）。"""
         del kwargs
         name = str(item_name or "").strip()
         if not name:
@@ -171,24 +265,37 @@ class WebUIApiMixin:
         except (TypeError, ValueError):
             grams = 0.0
 
+        scope = str(scope or "global").strip()
+        gid = str(group_id or "").strip()
+        if scope == "group":
+            if not gid:
+                return {"ok": False, "error": "群商店必须提供 group_id"}
+            enabled = await self.db.get_enabled_group_ids()
+            if gid not in enabled:
+                return {"ok": False, "error": f"群 {gid} 不在投喂白名单里"}
+        else:
+            scope = "global"
+            gid = ""
+
         dup = await self.db.fetchone(
-            "SELECT 1 FROM shop_items WHERE name = ? AND scope = 'global' AND is_on_sale = 1",
-            (name,),
+            "SELECT 1 FROM shop_items WHERE name = ? AND scope = ? AND group_id = ? AND is_on_sale = 1",
+            (name, scope, gid),
         )
         if dup:
-            return {"ok": False, "error": f"全局道具「{name}」已存在"}
+            where = "全局" if scope == "global" else f"群{gid}"
+            return {"ok": False, "error": f"{where}道具「{name}」已存在"}
 
         await self.db.execute_commit(
             """
             INSERT INTO shop_items (name, emoji, description, price, scope, group_id,
                                     is_on_sale, satiety_bonus, created_by, created_at)
-            VALUES (?, ?, ?, ?, 'global', '', 1, ?, 'webui', ?)
+            VALUES (?, ?, ?, ?, ?, ?, 1, ?, 'webui', ?)
             """,
-            (name, emoji, desc, price, sat, time.time()),
+            (name, emoji, desc, price, scope, gid, sat, time.time()),
         )
         id_row = await self.db.fetchone(
-            "SELECT item_id FROM shop_items WHERE name = ? AND scope = 'global' AND is_on_sale = 1",
-            (name,),
+            "SELECT item_id FROM shop_items WHERE name = ? AND scope = ? AND group_id = ? AND is_on_sale = 1",
+            (name, scope, gid),
         )
         item_id = int(id_row[0]) if id_row else 0
 
@@ -206,6 +313,8 @@ class WebUIApiMixin:
             "ok": True,
             "item_id": int(item_id),
             "name": name,
+            "scope": scope,
+            "group_id": gid,
             "valid": valid,
             "labels": labels,
         }

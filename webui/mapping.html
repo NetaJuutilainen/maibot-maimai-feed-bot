@@ -2,9 +2,11 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>身体联动管理 · 麦麦要吃那个！</title>
+<title>商店 · 身体联动管理 · 麦麦要吃那个！</title>
 <style>
   .fd-root {
+    /* 颜色全部走宿主 --maibot-* 主题变量（三种 dashboard 风格 × 明暗自动适配）；
+       拿不到变量时回落到下面的亮色值，:root.dark/.fd-dark 覆写暗色 */
     --fd-bg: var(--maibot-background, #f9f9f7);
     --fd-surface: var(--maibot-surface, #fcfcfb);
     --fd-fg: var(--maibot-foreground, #0b0b0b);
@@ -22,12 +24,12 @@
     color: var(--fd-fg);
     background: var(--fd-bg);
     padding: 18px 22px 46px;
-    max-width: 1280px;
+    max-width: 1320px;
     margin: 0 auto;
     box-sizing: border-box;
     font-size: 14px;
   }
-  :root.dark .fd-root, html.dark .fd-root {
+  :root.dark .fd-root, html.dark .fd-root, .fd-dark .fd-root {
     --fd-surface: var(--maibot-surface, #1a1a19);
     --fd-fg: var(--maibot-foreground, #f0efec);
     --fd-muted: var(--maibot-muted, #9a9890);
@@ -36,7 +38,7 @@
   }
   .fd-root *, .fd-root *::before, .fd-root *::after { box-sizing: border-box; }
 
-  .fd-topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--fd-border); }
+  .fd-topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--fd-border); }
   .fd-brand { display: flex; align-items: center; gap: 10px; }
   .fd-brand-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--fd-primary); color: var(--fd-primary-fg); display: inline-flex; align-items: center; justify-content: center; font-size: 18px; }
   .fd-brand h1 { font-size: 18px; font-weight: 700; margin: 0; }
@@ -52,6 +54,10 @@
   .fd-banner.err { border: 1px solid var(--fd-danger); background: rgba(208, 59, 59, 0.08); }
   .fd-banner.okmsg { border: 1px solid var(--fd-good); background: rgba(12, 163, 12, 0.08); }
 
+  .fd-scope-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .fd-tab { padding: 5px 14px; border-radius: 999px; border: 1px solid var(--fd-border); background: var(--fd-surface); color: var(--fd-fg); font-size: 13px; cursor: pointer; font-family: inherit; }
+  .fd-tab.active { background: var(--fd-primary); color: var(--fd-primary-fg); border-color: var(--fd-primary); }
+
   .fd-card { background: var(--fd-surface); border: 1px solid var(--fd-border); border-radius: var(--fd-radius); padding: 14px 16px; margin-bottom: 16px; }
   .fd-card-title { font-size: 14px; font-weight: 650; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
   .fd-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
@@ -60,8 +66,8 @@
     background: var(--fd-bg); color: var(--fd-fg); font-size: 13px; font-family: inherit;
   }
   .fd-input { width: 100%; }
-  .fd-input-sm { width: 110px; }
-  .fd-input-n { width: 90px; }
+  .fd-input-sm { width: 130px; }
+  .fd-input-n { width: 84px; }
   .fd-btn { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--fd-border); background: var(--fd-surface); color: var(--fd-fg); font-size: 13px; cursor: pointer; font-family: inherit; }
   .fd-btn:hover:not(:disabled) { background: var(--fd-soft); }
   .fd-btn:disabled { opacity: 0.5; cursor: wait; }
@@ -76,13 +82,15 @@
   .fd-scope-row td { color: var(--fd-muted); font-weight: 650; font-size: 12px; letter-spacing: 0.5px; padding-top: 12px; }
   .fd-name { font-weight: 600; white-space: nowrap; }
   .fd-scope-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; font-size: 11px; border-radius: 999px; border: 1px solid var(--fd-border); color: var(--fd-muted); }
+  .fd-off-tag { display: inline-block; margin-left: 4px; padding: 1px 7px; font-size: 11px; border-radius: 999px; border: 1px solid var(--fd-warn); color: var(--fd-warn); }
   .fd-valid { font-size: 12px; white-space: nowrap; }
   .fd-valid.ok { color: var(--fd-good); }
   .fd-valid.bad { color: var(--fd-danger); }
   .fd-valid.none { color: var(--fd-muted); }
   .fd-row-inputs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .fd-actions { display: flex; gap: 6px; }
-  .fd-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+  .fd-row-inputs label { font-size: 11px; color: var(--fd-muted); display: flex; flex-direction: column; gap: 2px; }
+  .fd-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .fd-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
   .fd-field label { display: block; font-size: 12px; color: var(--fd-muted); margin-bottom: 4px; }
   .fd-hint { font-size: 12px; color: var(--fd-muted); margin-top: 8px; line-height: 1.6; }
   .fd-loading { text-align: center; color: var(--fd-muted); padding: 30px 0; }
@@ -94,8 +102,8 @@
     <div class="fd-brand">
       <div class="fd-brand-icon">🫀</div>
       <div>
-        <h1>身体联动管理</h1>
-        <div class="fd-sub">道具 → 麦麦身体食物映射 · 定食组合 · 克数 · 解析校验（保存即时生效）</div>
+        <h1>商店 · 身体联动管理</h1>
+        <div class="fd-sub">全局/群商店切换 · 价格饱食度编辑 · 上下架 · 道具映射到麦麦身体（保存即时生效）</div>
       </div>
     </div>
     <div class="fd-pills" id="pills"></div>
@@ -104,6 +112,8 @@
   <div class="fd-banner" id="banner"><span id="banner-text"></span><button class="fd-btn fd-btn-sm" onclick="hideBanner()">关闭</button></div>
 
   <div class="fd-card">
+    <div class="fd-card-title">🏪 作用域</div>
+    <div class="fd-scope-tabs" id="scope-tabs"></div>
     <div class="fd-toolbar">
       <input class="fd-input fd-input-sm" id="search" placeholder="搜索道具/映射词…" oninput="renderTable()" style="flex:1; min-width:180px; max-width:320px;">
       <select class="fd-select" id="filter" onchange="renderTable()">
@@ -111,21 +121,23 @@
         <option value="linked">只看已映射</option>
         <option value="unlinked">只看未映射</option>
         <option value="invalid">只看校验失败</option>
+        <option value="off">只看已下架</option>
       </select>
       <button class="fd-btn" onclick="loadAll(true)">↻ 刷新</button>
-      <span class="fd-pill" id="foods-pill" title="身体食物词表规模">词表 —</span>
+      <span class="fd-pill" id="foods-pill">词表 —</span>
     </div>
     <div id="table-wrap"><div class="fd-loading">加载中…</div></div>
     <div class="fd-hint">
-      提示：映射词写中文即可（身体词表 311 种食物 + 473 别名，支持逗号组合 = 定食）；✗ 表示词表认不出（投喂时会按纯游戏结算）。
-      类型 <b>snack</b> 食物 / <b>drink</b> 饮品 / <b>meal</b> 整桌饭（引擎按餐段食谱补全配菜）；克数留空 = 默认份量，设小值 = 小份（不容易一次喂饱）。
-      睡觉 / BAC 超标 / 胃满时投喂会被身体拒绝且道具不消耗。
+      映射词写中文即可（身体词表 311 种食物 + 473 别名，支持逗号组合 = 定食）；✗ 表示词表认不出（投喂会按纯游戏结算）。
+      类型 <b>snack</b> 食物 / <b>drink</b> 饮品 / <b>meal</b> 整桌饭（引擎按餐段食谱补全配菜）；克数留空 = 默认份量，设小值 = 小份。
+      睡觉 / BAC 超标 / 胃满时投喂会被身体拒绝且道具不消耗（省道具）。
     </div>
   </div>
 
   <div class="fd-card">
-    <div class="fd-card-title">➕ 一键新建联动道具（全局商店）</div>
+    <div class="fd-card-title">➕ 新建道具（上架 + 映射一步完成）</div>
     <div class="fd-form-grid">
+      <div class="fd-field"><label>作用域</label><select class="fd-select" id="new-scope"><option value="global">🌐 全局商店</option></select></div>
       <div class="fd-field"><label>道具名 *</label><input class="fd-input" id="new-name" maxlength="40" placeholder="如：小蛋糕"></div>
       <div class="fd-field"><label>价格（积分）*</label><input class="fd-input fd-input-n" id="new-price" type="number" min="0" value="10"></div>
       <div class="fd-field"><label>emoji</label><input class="fd-input fd-input-n" id="new-emoji" maxlength="8" placeholder="🍰"></div>
@@ -149,18 +161,39 @@
   "use strict";
   var FOODS = { labels: {}, aliases: {}, base_grams: {}, volumes: {} };
   var ITEMS = [];
-  var BODY_STATE = null;
+  var GROUPS = [];
+  var SCOPE = "all"; // all | global | group:<gid>
 
   function $(id) { return document.getElementById(id); }
 
+  function unwrap(res) {
+    // 兼容桥的两种形态：裸 API 返回 / {success, result} 信封
+    if (res && typeof res === "object" && !("items" in res) && res.result && typeof res.result === "object") {
+      return res.result;
+    }
+    return res;
+  }
+
   function showBanner(text, kind) {
-    var b = $("banner");
     $("banner-text").textContent = text;
-    b.className = "fd-banner active " + (kind || "err");
+    $("banner").className = "fd-banner active " + (kind || "err");
     clearTimeout(showBanner._t);
     showBanner._t = setTimeout(hideBanner, 6000);
   }
   function hideBanner() { $("banner").className = "fd-banner"; }
+
+  function call(kind, name, args) {
+    if (!window.maibot || !window.maibot[kind]) {
+      return Promise.reject(new Error("桥未注入（window.maibot 不存在）——请完全刷新 WebUI 页面（F5）后重进"));
+    }
+    return window.maibot[kind](name, args).then(function (res) {
+      var r = unwrap(res);
+      if (r && (r.success === false)) {
+        throw new Error(r.error || r.result && r.result.error || "调用返回失败");
+      }
+      return r;
+    });
+  }
 
   // 与 body/服务端一致的解析语义：key 精确匹配 → 最长别名子串
   function resolveWord(w) {
@@ -190,69 +223,73 @@
     }
     return keys;
   }
-  function labelOf(key) { return FOODS.labels[key] || key || ""; }
 
-  function stateLine(s) {
-    if (!s) return "";
-    var sleep = s.sleeping ? "🌙 睡梦中" : "清醒";
-    return sleep + " · 胃 " + Number(s.gastric_volume_ml || 0).toFixed(0) + "mL · 血糖 " +
-      Number(s.glucose || 0).toFixed(1) + " · 饥饿 " + Number(s.hunger || 0).toFixed(0) + "/100";
+  function renderScopeTabs() {
+    var tabs = [{ key: "all", label: "📋 全部" }, { key: "global", label: "🌐 全局商店" }];
+    GROUPS.forEach(function (gid) { tabs.push({ key: "group:" + gid, label: "🏠 群 " + gid }); });
+    $("scope-tabs").innerHTML = tabs.map(function (t) {
+      return '<button class="fd-tab' + (SCOPE === t.key ? ' active' : '') + '" data-scope="' + t.key + '">' + t.label + '</button>';
+    }).join("");
+    Array.prototype.forEach.call($("scope-tabs").children, function (btn) {
+      btn.onclick = function () { SCOPE = btn.getAttribute("data-scope"); renderScopeTabs(); renderTable(); };
+    });
+  }
+
+  function scopeTag(it) { return it.scope === "global" ? "全局" : "群" + it.group_id; }
+  function inScope(it) {
+    if (SCOPE === "all") return true;
+    if (SCOPE === "global") return it.scope === "global";
+    return SCOPE === "group:" + it.group_id;
   }
 
   function renderPills(ov) {
     var pills = [];
     var st = ov.body_state;
     if (ov.body_enabled && st) {
-      pills.push('<span class="fd-pill' + (st.sleeping ? ' warn' : ' ok') + '">' + stateLine(st) + '</span>');
+      pills.push('<span class="fd-pill' + (st.sleeping ? ' warn' : ' ok') + '">' +
+        (st.sleeping ? "🌙 睡梦中" : "清醒") + " · 胃 " + Number(st.gastric_volume_ml || 0).toFixed(0) + "mL · 血糖 " +
+        Number(st.glucose || 0).toFixed(1) + " · 饥饿 " + Number(st.hunger || 0).toFixed(0) + '/100</span>');
     } else {
       pills.push('<span class="fd-pill warn">身体联动未开启（config [linkage]）</span>');
     }
     pills.push('<span class="fd-pill">在售 <b>' + ov.total + '</b></span>');
     pills.push('<span class="fd-pill ok">已映射 <b>' + ov.linked_count + '</b></span>');
-    if (ov.invalid_count > 0) {
-      pills.push('<span class="fd-pill warn">✗ 待修 <b>' + ov.invalid_count + '</b></span>');
-    }
+    if (ov.invalid_count > 0) pills.push('<span class="fd-pill warn">✗ 待修 <b>' + ov.invalid_count + '</b></span>');
     $("pills").innerHTML = pills.join("");
     $("foods-pill").textContent = "词表 " + Object.keys(FOODS.labels).length + " 种 · 别名 " + Object.keys(FOODS.aliases).length + " 条";
   }
 
   function rowHtml(it) {
-    var scopeTag = it.scope === "global" ? "全局" : "群" + it.group_id;
-    var name = (it.emoji ? it.emoji : "") + it.name;
-    var vHtml;
-    if (!it.body_food) {
-      vHtml = '<span class="fd-valid none">—</span>';
-    } else if (it.valid) {
-      vHtml = '<span class="fd-valid ok">✓ 可解析</span>';
-    } else {
-      vHtml = '<span class="fd-valid bad">✗ 认不出</span>';
-    }
-    var kindSel = ['snack', 'drink', 'meal'].map(function (k) {
-      return '<option value="' + k + '"' + (k === it.body_kind ? ' selected' : '') + '>' + k + '</option>';
+    var name = (it.emoji ? it.emoji : "") + it.name +
+      '<span class="fd-scope-tag">' + scopeTag(it) + "</span>" +
+      (it.is_on_sale ? "" : '<span class="fd-off-tag">已下架</span>');
+    var vHtml = !it.body_food ? '<span class="fd-valid none">—</span>'
+      : (it.valid ? '<span class="fd-valid ok">✓ 可解析</span>' : '<span class="fd-valid bad">✗ 认不出</span>');
+    var kindSel = ["snack", "drink", "meal"].map(function (k) {
+      return '<option value="' + k + '"' + (k === it.body_kind ? " selected" : "") + ">" + k + "</option>";
     }).join("");
     return '<tr data-id="' + it.item_id + '">' +
-      '<td class="fd-name">' + name + '<span class="fd-scope-tag">' + scopeTag + '</span></td>' +
-      '<td>' + it.price + '</td>' +
-      '<td>' + (it.satiety_bonus > 0 ? "+" : "") + Number(it.satiety_bonus).toFixed(0) + '</td>' +
+      '<td class="fd-name">' + name + "</td>" +
       '<td><div class="fd-row-inputs">' +
-        '<input class="fd-input" style="max-width:220px;" list="food-datalist" data-f="word" value="' + escAttr(it.body_food) + '" placeholder="食物词，逗号=定食">' +
-        '<select class="fd-select" data-f="kind">' + kindSel + '</select>' +
-        '<input class="fd-input fd-input-n" data-f="grams" type="number" min="0" max="3000" step="1" value="' + (it.body_grams > 0 ? Number(it.body_grams) : "") + '" placeholder="克数">' +
-        '<span class="fd-valid" data-f="vmark">' + vHtml + '</span>' +
-      '</div></td>' +
+        '<label>价格<input class="fd-input fd-input-n" data-f="price" type="number" min="0" value="' + it.price + '"></label>' +
+        '<label>饱食度<input class="fd-input fd-input-n" data-f="sat" type="number" step="0.1" value="' + Number(it.satiety_bonus) + '"></label>' +
+        '<label>emoji<input class="fd-input fd-input-n" data-f="emoji" maxlength="8" value="' + escAttr(it.emoji) + '"></label>' +
+      "</div></td>" +
+      '<td><div class="fd-row-inputs">' +
+        '<label>映射词<input class="fd-input" style="max-width:210px;" list="food-datalist" data-f="word" value="' + escAttr(it.body_food) + '" placeholder="留空=纯游戏道具"></label>' +
+        '<label>类型<select class="fd-select" data-f="kind">' + kindSel + "</select></label>" +
+        '<label>克数<input class="fd-input fd-input-n" data-f="grams" type="number" min="0" max="3000" value="' + (it.body_grams > 0 ? Number(it.body_grams) : "") + '" placeholder="默认"></label>' +
+        '<span class="fd-valid" data-f="vmark">' + vHtml + "</span>" +
+      "</div></td>" +
       '<td><div class="fd-actions">' +
         '<button class="fd-btn fd-btn-sm fd-btn-primary" onclick="saveRow(' + it.item_id + ', this)">保存</button>' +
-        '<button class="fd-btn fd-btn-sm fd-btn-danger" onclick="clearRow(' + it.item_id + ', this)">解除</button>' +
-      '</div></td>' +
-      '</tr>';
+        '<button class="fd-btn fd-btn-sm" onclick="toggleSale(' + it.item_id + ", " + (it.is_on_sale ? 0 : 1) + ', this)">' + (it.is_on_sale ? "下架" : "上架") + "</button>" +
+        (it.body_food ? '<button class="fd-btn fd-btn-sm fd-btn-danger" onclick="clearRow(' + it.item_id + ', this)">解除映射</button>' : "") +
+      "</div></td></tr>";
   }
 
   function escAttr(s) {
     return String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-  }
-
-  function scopeHeader(text) {
-    return '<tr class="fd-scope-row"><td colspan="5">' + text + '</td></tr>';
   }
 
   function renderTable() {
@@ -260,37 +297,45 @@
     var filter = $("filter").value;
     var rows = [];
     var lastScope = null;
+    var shown = 0;
     ITEMS.forEach(function (it) {
+      if (!inScope(it)) return;
       if (filter === "linked" && !it.body_food) return;
       if (filter === "unlinked" && it.body_food) return;
       if (filter === "invalid" && (!it.body_food || it.valid)) return;
+      if (filter === "off" && it.is_on_sale) return;
       if (q) {
         var hay = (it.name + " " + it.body_food + " " + (it.emoji || "")).toLowerCase();
         if (hay.indexOf(q) < 0) return;
       }
-      var scope = it.scope === "global" ? "🌐 全局商店" : "🏠 群 " + it.group_id;
+      var scope = it.scope === "global" ? "🌐 全局" : "🏠 群 " + it.group_id;
       if (scope !== lastScope) {
-        rows.push(scopeHeader(scope));
+        rows.push('<tr class="fd-scope-row"><td colspan="4">' + scope + "</td></tr>");
         lastScope = scope;
       }
       rows.push(rowHtml(it));
+      shown++;
     });
     if (!rows.length) {
-      $("table-wrap").innerHTML = '<div class="fd-loading">没有符合条件的道具</div>';
+      $("table-wrap").innerHTML = '<div class="fd-loading">当前作用域没有符合条件的道具</div>';
       return;
     }
     $("table-wrap").innerHTML =
       '<table class="fd-table"><thead><tr>' +
-      '<th>道具</th><th>价格</th><th>饱食度</th><th style="width:52%;">身体映射（词 / 类型 / 克数）</th><th>操作</th>' +
-      '</tr></thead><tbody>' + rows.join("") + '</tbody></table>';
+      "<th>道具</th><th>游戏层（价格/饱食度/emoji）</th><th style=\"width:46%;\">身体映射（词 / 类型 / 克数）</th><th>操作</th>" +
+      "</tr></thead><tbody>" + rows.join("") + "</tbody></table>" +
+      '<div class="fd-hint">显示 ' + shown + " 件</div>";
   }
 
-  function readRowInputs(tr) {
+  function readRow(tr) {
     function f(name) {
       var el = tr.querySelector('[data-f="' + name + '"]');
       return el ? el.value : "";
     }
     return {
+      price: parseInt(f("price"), 10) || 0,
+      sat: parseFloat(f("sat")) || 0,
+      emoji: f("emoji").trim(),
       word: f("word").trim(),
       kind: f("kind"),
       grams: parseFloat(f("grams")) || 0,
@@ -300,25 +345,25 @@
 
   window.saveRow = function (itemId, btn) {
     var tr = btn.closest("tr");
-    var v = readRowInputs(tr);
+    var v = readRow(tr);
     if (v.word && resolveWords(v.word) === null) {
       showBanner("「" + v.word + "」在词表里认不出（可保存但投喂会按纯游戏结算）——请改用词表词或先确认", "err");
       return;
     }
     btn.disabled = true;
-    window.maibot.action("set_mapping", {
+    call("action", "item_save", {
       item_id: itemId,
+      price: v.price,
+      satiety_bonus: v.sat,
+      emoji: v.emoji,
+      description: "",
       body_food: v.word,
       body_kind: v.kind,
       body_grams: v.grams
     }).then(function (res) {
       btn.disabled = false;
       if (res && res.ok === false) { showBanner(res.error || "保存失败", "err"); return; }
-      if (v.word && res.valid === false) {
-        showBanner("已保存，但身体词表认不出「" + v.word + "」——投喂会按纯游戏结算", "err");
-      } else {
-        showBanner("✅ 已保存" + (res.labels && res.labels.length ? "（解析为 " + res.labels.join(" + ") + "）" : ""), "okmsg");
-      }
+      showBanner("✅ 已保存" + (res.labels && res.labels.length ? "（解析为 " + res.labels.join(" + ") + "）" : ""), "okmsg");
       loadAll();
     }).catch(function (err) {
       btn.disabled = false;
@@ -328,7 +373,7 @@
 
   window.clearRow = function (itemId, btn) {
     btn.disabled = true;
-    window.maibot.action("set_mapping", { item_id: itemId, body_food: "", body_kind: "snack", body_grams: 0 })
+    call("action", "item_save", { item_id: itemId, body_food: "", body_kind: "snack", body_grams: 0 })
       .then(function (res) {
         btn.disabled = false;
         if (res && res.ok === false) { showBanner(res.error || "解除失败", "err"); return; }
@@ -340,17 +385,34 @@
       });
   };
 
+  window.toggleSale = function (itemId, onSale, btn) {
+    btn.disabled = true;
+    call("action", "item_toggle_sale", { item_id: itemId, on_sale: onSale })
+      .then(function (res) {
+        btn.disabled = false;
+        if (res && res.ok === false) { showBanner(res.error || "操作失败", "err"); return; }
+        showBanner(onSale ? "✅ 已上架" : "✅ 已下架（数据保留）", "okmsg");
+        loadAll();
+      }).catch(function (err) {
+        btn.disabled = false;
+        showBanner("操作失败：" + (err && err.message || err), "err");
+      });
+  };
+
   window.createItem = function () {
     var name = $("new-name").value.trim();
     if (!name) { showBanner("道具名不能为空", "err"); return; }
     var word = $("new-word").value.trim();
     if (word && resolveWords(word) === null) {
-      showBanner("映射词「" + word + "」在词表里认不出，请改用词表词（可点击输入框看候选）", "err");
+      showBanner("映射词「" + word + "」在词表里认不出，请改用词表词（可点输入框看候选）", "err");
       return;
     }
+    var scopeVal = $("new-scope").value;
+    var gid = "";
+    if (scopeVal.indexOf("group:") === 0) { gid = scopeVal.slice(6); scopeVal = "group"; }
     var btn = $("btn-create");
     btn.disabled = true;
-    window.maibot.action("create_item", {
+    call("action", "create_item", {
       item_name: name,
       price: parseInt($("new-price").value, 10) || 0,
       emoji: $("new-emoji").value.trim(),
@@ -358,7 +420,9 @@
       satiety_bonus: parseFloat($("new-sat").value) || 0,
       body_food: word,
       body_kind: $("new-kind").value,
-      body_grams: parseFloat($("new-grams").value) || 0
+      body_grams: parseFloat($("new-grams").value) || 0,
+      scope: scopeVal,
+      group_id: gid
     }).then(function (res) {
       btn.disabled = false;
       if (res && res.ok === false) { showBanner(res.error || "创建失败", "err"); return; }
@@ -373,28 +437,45 @@
   };
 
   function fillDatalist() {
-    var dl = $("food-datalist");
     var labels = Object.keys(FOODS.labels).map(function (k) { return FOODS.labels[k]; }).sort();
-    dl.innerHTML = labels.map(function (l) { return '<option value="' + escAttr(l) + '">'; }).join("");
+    $("food-datalist").innerHTML = labels.map(function (l) { return '<option value="' + escAttr(l) + '">'; }).join("");
   }
 
   function loadAll(force) {
     $("table-wrap").innerHTML = '<div class="fd-loading">加载中…</div>';
-    window.maibot.query("overview", { refresh: force ? 1 : 0 }).then(function (ov) {
+    call("query", "overview", { refresh: force ? 1 : 0 }).then(function (ov) {
       if (!ov || ov.ok === false) { showBanner((ov && ov.error) || "加载失败", "err"); return; }
       FOODS = ov.foods || FOODS;
       ITEMS = ov.items || [];
-      BODY_STATE = ov.body_state || null;
+      GROUPS = ov.groups || [];
       renderPills(ov);
+      renderScopeTabs();
       fillDatalist();
       renderTable();
     }).catch(function (err) {
-      $("table-wrap").innerHTML = '<div class="fd-loading">加载失败：' + escAttr(err && err.message || err) + '</div>';
+      $("table-wrap").innerHTML = '<div class="fd-loading">加载失败：' + escAttr(err && err.message || err) + "</div>";
+      showBanner("加载失败：" + (err && err.message || err), "err");
     });
   }
   window.loadAll = loadAll;
 
-  window.maibot.ready.then(function () { loadAll(); });
+  if (!window.maibot) {
+    $("table-wrap").innerHTML =
+      '<div class="fd-loading">❌ 桥未注入（window.maibot 不存在）——请完全刷新 WebUI 页面（Ctrl+F5）后重进；' +
+      "若仍出现，说明插件注册失败，先看服务端日志「WebUI 声明无效」。</div>";
+    return;
+  }
+  window.maibot.ready.then(function (ctx) {
+    // 三种 dashboard 风格 × 明暗：颜色全部走 --maibot-* 变量自适应；
+    // 这里按 ctx.theme 兜底切 dark 类，保证拿不到宿主变量时也有暗色
+    try {
+      document.documentElement.classList.toggle("dark", !!(ctx && ctx.theme === "dark"));
+      document.getElementById("root").classList.toggle("fd-dark", !!(ctx && ctx.theme === "dark"));
+    } catch (e) { /* 主题信息缺失不阻断 */ }
+    loadAll();
+  }).catch(function (err) {
+    $("table-wrap").innerHTML = '<div class="fd-loading">桥初始化失败：' + escAttr(err && err.message || err) + "</div>";
+  });
 })();
 </script>
 </body>

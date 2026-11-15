@@ -9,7 +9,7 @@
       "mode": "custom",
       "id": "mapping",
       "title": "身体联动管理",
-      "description": "道具映射到麦麦身体的食物：总览、行内编辑、定食组合、克数与解析校验",
+      "description": "商店管理（全局/群切换）+ 道具映射到麦麦身体的食物：定食组合、克数与解析校验",
       "icon": "settings",
       "entry": "webui/mapping.html",
       "layout": "document",
@@ -30,6 +30,14 @@
       "actions": {
         "set_mapping": {
           "api": "webui_mapping_set",
+          "version": "1"
+        },
+        "item_save": {
+          "api": "webui_item_save",
+          "version": "1"
+        },
+        "item_toggle_sale": {
+          "api": "webui_item_toggle_sale",
           "version": "1"
         },
         "create_item": {

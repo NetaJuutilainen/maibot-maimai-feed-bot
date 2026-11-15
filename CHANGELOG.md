@@ -117,3 +117,13 @@
 
 MIT License。基于 pan-ice/feed-bot v1.3.0（Copyright (c) 2026 磐冰 / pan-ice）改造，
 改动部分 Copyright (c) 2026 NetaJuutilainen。
+
+## 1.8.1 — 2026-11-16（热修）
+
+- **WebUI 列表加载修复**：兼容宿主桥的两种返回形态（裸结果 / `{success, result}` 信封），
+  桥未注入时给出明确的「请完全刷新 WebUI 页面（F5）」提示，`success===false` 统一判错。
+- **原版商店快速设置并入管理页**：页内直接编辑价格/饱食度/emoji，**作用域切换**（全部 / 🌐 全局 /
+  🏠 各启用群），上下架按钮；新建道具支持指定群商店。新增 @API：`webui_item_save` / `webui_item_toggle_sale`。
+- **三种 dashboard 风格 × 明暗适配**（学麦生活）：颜色全部走宿主 `--maibot-*` 变量，
+  ready 回调按 `ctx.theme` 兜底切换 dark 类。
+- overview 增补：`is_on_sale` 字段 + 已下架的映射道具仍可见（可重新上架）、启用群列表。
