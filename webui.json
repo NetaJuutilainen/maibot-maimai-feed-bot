@@ -30,19 +30,59 @@
       "actions": {
         "set_mapping": {
           "api": "webui_mapping_set",
-          "version": "1"
+          "version": "1",
+          "parameters": {
+            "item_id": {"type": "integer", "required": true, "minimum": 1},
+            "body_food": {"type": "string", "required": false, "max_length": 200},
+            "body_kind": {"type": "string", "required": false, "max_length": 20},
+            "body_grams": {"type": "number", "required": false, "minimum": 0, "maximum": 3000}
+          }
         },
         "item_save": {
           "api": "webui_item_save",
-          "version": "1"
+          "version": "1",
+          "parameters": {
+            "item_id": {"type": "integer", "required": true, "minimum": 1},
+            "item_name": {"type": "string", "required": false, "max_length": 40},
+            "price": {"type": "integer", "required": false, "minimum": 0, "maximum": 1000000},
+            "satiety_bonus": {"type": "number", "required": false, "minimum": -1000, "maximum": 1000},
+            "emoji": {"type": "string", "required": false, "max_length": 40},
+            "description": {"type": "string", "required": false, "max_length": 400},
+            "body_food": {"type": "string", "required": false, "max_length": 200},
+            "body_kind": {"type": "string", "required": false, "max_length": 20},
+            "body_grams": {"type": "number", "required": false, "minimum": 0, "maximum": 3000}
+          }
         },
         "item_toggle_sale": {
           "api": "webui_item_toggle_sale",
-          "version": "1"
+          "version": "1",
+          "parameters": {
+            "item_id": {"type": "integer", "required": true, "minimum": 1},
+            "on_sale": {"type": "integer", "required": true, "minimum": 0, "maximum": 1}
+          }
         },
         "create_item": {
           "api": "webui_item_create",
-          "version": "1"
+          "version": "1",
+          "parameters": {
+            "item_name": {"type": "string", "required": true, "max_length": 40},
+            "price": {"type": "integer", "required": false, "minimum": 0, "maximum": 1000000},
+            "emoji": {"type": "string", "required": false, "max_length": 40},
+            "description": {"type": "string", "required": false, "max_length": 400},
+            "satiety_bonus": {"type": "number", "required": false, "minimum": -1000, "maximum": 1000},
+            "body_food": {"type": "string", "required": false, "max_length": 200},
+            "body_kind": {"type": "string", "required": false, "max_length": 20},
+            "body_grams": {"type": "number", "required": false, "minimum": 0, "maximum": 3000},
+            "scope": {"type": "string", "required": false, "max_length": 20},
+            "group_id": {"type": "string", "required": false, "max_length": 40}
+          }
+        },
+        "config_save": {
+          "api": "webui_config_save",
+          "version": "1",
+          "parameters": {
+            "values_json": {"type": "string", "required": true, "max_length": 65536}
+          }
         }
       }
     }

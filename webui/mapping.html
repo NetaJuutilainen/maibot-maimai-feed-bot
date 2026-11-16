@@ -185,7 +185,7 @@
       <div class="fd-field"><label>饱食度（可负）</label><input class="fd-input fd-input-n" id="new-sat" type="number" step="0.1" value="10"></div>
       <div class="fd-field fd-span-4"><label>描述</label><input class="fd-input" id="new-desc" maxlength="100" placeholder="软软的小蛋糕"></div>
       <div class="fd-field fd-span-2"><label>映射食物词（可组合 = 定食；推荐克数见联动区说明）</label><input class="fd-input" id="new-word" list="food-datalist" placeholder="点右侧 📖 选词，或直接写：蛋糕 / 米饭,猪肉,青菜"></div>
-      <div class="fd-field"><label>类型</label><select class="fd-select" id="new-kind"><option value="snack">snack 食物</option><option value="drink">drink 饮品</option><option value="meal">meal 整桌饭</option></select></div>
+      <div class="fd-field"><label>类型</label><select class="fd-select" id="new-kind"><option value="snack">食物</option><option value="drink">饮品</option><option value="meal">整桌饭</option></select></div>
       <div class="fd-field"><label>每份克数（可选）</label><input class="fd-input fd-input-n" id="new-grams" type="number" min="0" max="3000" placeholder="留空=默认"></div>
     </div>
     <div style="margin-top: 16px; display: flex; align-items: center; gap: 12px;">
@@ -331,7 +331,7 @@
       return '<button class="fd-tab' + (CREATE_SCOPE === c.key ? " active" : "") + '" data-scope="' + c.key + '">' + c.label + "</button>";
     }).join("");
     Array.prototype.forEach.call($("new-scope-chips").children, function (btn) {
-      btn.onclick = function () { CREATE_SCOPE = btn.getAttribute("data-scope"); };
+      btn.onclick = function () { CREATE_SCOPE = btn.getAttribute("data-scope"); renderScopeTabs(); };
     });
   }
 
@@ -393,8 +393,8 @@
       '<span class="fd-scope-tag">' + scopeTag(it) + "</span>";
     var vHtml = !it.body_food ? '<span class="fd-valid none">— 未映射</span>'
       : (it.valid ? '<span class="fd-valid ok">✓ 可解析</span>' : '<span class="fd-valid bad">✗ 认不出</span>');
-    var kindSel = ["snack", "drink", "meal"].map(function (k) {
-      return '<option value="' + k + '"' + (k === it.body_kind ? " selected" : "") + ">" + k + "</option>";
+    var kindSel = [["snack", "食物"], ["drink", "饮品"], ["meal", "整桌饭"]].map(function (kv) {
+      return '<option value="' + kv[0] + '"' + (kv[0] === it.body_kind ? " selected" : "") + ">" + kv[1] + "</option>";
     }).join("");
     return '<tr data-id="' + it.item_id + '">' +
       '<td class="fd-name">' + name + "</td>" +
@@ -585,7 +585,7 @@
         '<div class="fd-field" style="grid-column: 1 / -1;"><label>描述</label><input class="fd-input" data-e="desc" maxlength="100" value="' + escAttr(it.description) + '"></div>' +
         '<div class="fd-field" style="grid-column: 1 / -1;"><label>映射食物词（留空 = 普通道具；填词 = 联动道具，可自由切换）</label><div style="display:flex; gap:8px;"><input class="fd-input" data-e="word" value="' + escAttr(it.body_food) + '" placeholder="蛋糕 或 米饭,猪肉,青菜"><button class="fd-btn fd-btn-sm" onclick="openPickerByPanel(this)">📖 选词</button></div></div>' +
         '<div class="fd-field"><label>类型</label><select class="fd-select" data-e="kind">' +
-          ["snack", "drink", "meal"].map(function (k) { return '<option value="' + k + '"' + (k === (it.body_kind || "snack") ? " selected" : "") + ">" + k + "</option>"; }).join("") +
+          [["snack", "食物"], ["drink", "饮品"], ["meal", "整桌饭"]].map(function (kv) { return '<option value="' + kv[0] + '"' + (kv[0] === (it.body_kind || "snack") ? " selected" : "") + ">" + kv[1] + "</option>"; }).join("") +
         "</select></div>" +
         '<div class="fd-field"><label>每份克数（可选）</label><input class="fd-input fd-input-n" data-e="grams" type="number" min="0" max="3000" value="' + (it.body_grams > 0 ? Number(it.body_grams) : "") + '" placeholder="留空=默认"></div>' +
       "</div>" +
@@ -806,7 +806,7 @@
       return '<button class="fd-tab' + (CREATE_SCOPE === c.key ? " active" : "") + '" data-scope="' + c.key + '">' + c.label + "</button>";
     }).join("");
     Array.prototype.forEach.call($("new-scope-chips").children, function (btn) {
-      btn.onclick = function () { CREATE_SCOPE = btn.getAttribute("data-scope"); };
+      btn.onclick = function () { CREATE_SCOPE = btn.getAttribute("data-scope"); renderScopeTabs(); };
     });
   }
 
