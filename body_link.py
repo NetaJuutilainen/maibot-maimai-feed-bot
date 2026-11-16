@@ -280,17 +280,32 @@ class BodyLinkClient:
             keys.append(key)
         return keys
 
+    @staticmethod
+    def per_part_grams(parts: list[str], grams: float) -> float:
+        """把「整份克数」摊到组合里的每个食物上（单个食物则原样）。
+
+        2026-11-16 修：旧实现把克数原样套给组合里的每一个食物——
+        500g 的 KFC 套餐（炸鸡+汉堡+薯条+可乐）变成 4×500g≈2kg，
+        一次投喂就把 1500mL 的胃顶满。现在按食物数平均分配。
+        """
+        n = max(1, len(parts))
+        if grams <= 0:
+            return 0.0
+        return grams / n if n > 1 else grams
+
     def _per_unit_ml(self, word: str, grams: float) -> float:
         """单份占用的胃容量（mL）：组合词 = 各部分之和；设了克数按 克数/基准克数 缩放。"""
         foods = self._foods
+        parts = self.split_words(word)
+        g_each = self.per_part_grams(parts, grams)
         total = 0.0
-        for part in self.split_words(word):
+        for part in parts:
             key = self.resolve(part) if foods else None
             vol = _num(foods["volumes"].get(key, 0.0), 0.0) if (foods and key) else 0.0
-            if grams > 0 and foods and key:
+            if g_each > 0 and foods and key:
                 base = _num(foods["base_grams"].get(key, 0.0), 0.0)
                 if base > 0:
-                    vol = vol * (grams / base)
+                    vol = vol * (g_each / base)
             total += vol
         return total
 
@@ -355,9 +370,10 @@ class BodyLinkClient:
         组合词按份重复整组食材。
         """
         parts = self.split_words(word)
+        g_each = self.per_part_grams(parts, grams)
         if grams > 0:
             items_payload: list[dict[str, Any]] = [
-                {"label": part, "amount_g": grams}
+                {"label": part, "amount_g": g_each}
                 for _ in range(max(1, int(take)))
                 for part in parts
             ]
