@@ -711,7 +711,8 @@ class AsyncDatabase:
             row = await self.fetchone(
                 """
                 SELECT item_id, name, emoji, description, price, feed_reply_hint,
-                       category, satiety_bonus, style_prompt, style_duration_minutes, scope, group_id
+                       category, satiety_bonus, style_prompt, style_duration_minutes, scope, group_id,
+                       body_food, body_kind, body_grams
                 FROM shop_items
                 WHERE name = ? AND scope = 'group' AND group_id = ? AND is_on_sale = 1
                 """,
@@ -724,7 +725,8 @@ class AsyncDatabase:
         row = await self.fetchone(
             """
             SELECT item_id, name, emoji, description, price, feed_reply_hint,
-                   category, satiety_bonus, style_prompt, style_duration_minutes, scope, group_id
+                   category, satiety_bonus, style_prompt, style_duration_minutes, scope, group_id,
+                   body_food, body_kind, body_grams
             FROM shop_items
             WHERE name = ? AND scope = 'global' AND is_on_sale = 1
             """,
@@ -751,6 +753,9 @@ class AsyncDatabase:
             "style_duration_minutes": row[9],
             "scope": row[10],
             "group_id": row[11],
+            "body_food": str(row[12] or "") if len(row) > 12 else "",
+            "body_kind": str(row[13] or "") if len(row) > 13 else "",
+            "body_grams": float(row[14] or 0.0) if len(row) > 14 else 0.0,
         }
 
     # ---- 身体映射（联动） ----

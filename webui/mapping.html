@@ -68,6 +68,7 @@
   .fd-input-sm { width: 150px; }
   .fd-input-n { width: 100px; }
   .fd-input-w { width: 150px; }
+  .fd-btn-pick { white-space: nowrap; flex-shrink: 0; }
   .fd-btn { padding: 7px 14px; border-radius: 9px; border: 1px solid var(--fd-border); background: var(--fd-surface); color: var(--fd-fg); font-size: 14px; cursor: pointer; font-family: inherit; }
   .fd-btn:hover:not(:disabled) { background: var(--fd-soft); }
   .fd-btn:disabled { opacity: 0.5; cursor: wait; }
@@ -92,8 +93,8 @@
   .fd-actions { display: flex; gap: 7px; flex-wrap: wrap; }
 
   /* 行内展开面板（编辑器 / 选词器）——不用 fixed，插在触发行旁边 */
-  .fd-inline-cell { padding: 12px 14px !important; background: var(--fd-soft); }
-  .fd-inline-panel { border: 1px solid var(--fd-primary); border-radius: var(--fd-radius); padding: 14px 16px; background: var(--fd-surface); }
+  /* 悬浮卡片：absolute 定位到触发元素附近（document 布局 iframe 下 fixed 会指向整页中心，故用 absolute+坐标） */
+  .fd-float-card { position: absolute; z-index: 70; background: var(--fd-surface); border: 1px solid var(--fd-primary); border-radius: var(--fd-radius); padding: 14px 16px; box-shadow: 0 14px 44px rgba(0, 0, 0, 0.35); width: min(900px, calc(100vw - 48px)); }
   .fd-panel-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
   .fd-panel-head b { font-size: 15px; }
   .fd-panel-head .fd-input { flex: 1; min-width: 160px; }
@@ -185,7 +186,7 @@
       <div class="fd-field"><label>emoji</label><input class="fd-input fd-input-n" id="new-emoji" maxlength="8" placeholder="🍰"></div>
       <div class="fd-field"><label>饱食度（可负）</label><input class="fd-input fd-input-n" id="new-sat" type="number" step="0.1" value="10"></div>
       <div class="fd-field fd-span-4"><label>描述</label><input class="fd-input" id="new-desc" maxlength="100" placeholder="软软的小蛋糕"></div>
-      <div class="fd-field fd-span-2"><label>映射食物词（可组合 = 定食；推荐克数见联动区说明）</label><div style="display:flex; gap:8px;"><input class="fd-input" id="new-word" list="food-datalist" placeholder="点右侧 📖 选词，或直接写：蛋糕 / 米饭,猪肉,青菜"><button class="fd-btn" onclick="openPickerById('new-word')">📖 选词</button></div></div>
+      <div class="fd-field fd-span-2"><label>映射食物词（可组合 = 定食；推荐克数见联动区说明）</label><div style="display:flex; gap:8px;"><input class="fd-input" id="new-word" list="food-datalist" placeholder="点右侧 📖 选词，或直接写：蛋糕 / 米饭,猪肉,青菜"><button class="fd-btn fd-btn-pick fd-float-keep" onclick="openPickerById('new-word')">📖 选词</button></div></div>
       <div class="fd-field"><label>类型</label><select class="fd-select" id="new-kind"><option value="snack">食物</option><option value="drink">饮品</option><option value="meal">整桌饭</option></select></div>
       <div class="fd-field"><label>每份克数（可选）</label><input class="fd-input fd-input-w" id="new-grams" type="number" min="0" max="3000" placeholder="留空=默认"></div>
     </div>
@@ -206,13 +207,12 @@
 
   <datalist id="food-datalist"></datalist>
 
-  <!-- 选词面板模板：唯一实体，用 DOM 移动插到触发行/字段旁边（不用 fixed） -->
+  <!-- 选词浮层：唯一实体，absolute 定位到触发元素附近（悬浮卡片） -->
   <div id="picker-panel-holder" style="display: none;">
-    <div class="fd-inline-panel" id="picker-panel">
+    <div class="fd-float-card" id="picker-panel">
       <div class="fd-panel-head">
         <b>选择食物词</b>
         <input class="fd-input" id="picker-search" placeholder="搜索食物（如：米饭 / 啤酒 / 蛋挞）…" oninput="renderPickerGrid()">
-        <button class="fd-btn fd-btn-sm" onclick="closePicker()">完成</button>
       </div>
       <div class="fd-picker-chips" id="picker-chips"></div>
       <div class="fd-picker-grid" id="picker-grid"></div>
@@ -220,7 +220,7 @@
       <div class="fd-hint" style="margin: 0;">点词 = 选中/取消（选中高亮，自动写入映射框，组合用逗号连接）；组合（定食）继续点下一个词即可。</div>
       <div style="display: flex; gap: 8px; margin-top: 8px;">
         <button class="fd-btn fd-btn-sm fd-btn-danger" onclick="pickerClear()">清空已选</button>
-        <button class="fd-btn fd-btn-sm fd-btn-primary" onclick="closePicker()">完成</button>
+        <button class="fd-btn fd-btn-sm fd-btn-primary" onclick="closePicker()">关闭</button>
       </div>
     </div>
   </div>
@@ -384,7 +384,7 @@
       "</div></td>" +
       '<td><div class="fd-actions">' +
         '<button class="fd-btn fd-btn-sm fd-btn-primary" onclick="saveGameRow(' + it.item_id + ', this)">保存</button>' +
-        '<button class="fd-btn fd-btn-sm" onclick="openEdit(' + it.item_id + ', this)">✏️ 完整编辑</button>' +
+        '<button class="fd-btn fd-btn-sm fd-float-keep" onclick="openEdit(' + it.item_id + ', this)">✏️ 完整编辑</button>' +
         '<button class="fd-btn fd-btn-sm" onclick="toggleSale(' + it.item_id + ", " + (it.is_on_sale ? 0 : 1) + ', this)">' + (it.is_on_sale ? "下架" : "上架") + "</button>" +
       "</div></td></tr>";
   }
@@ -401,14 +401,14 @@
       '<td class="fd-name">' + name + "</td>" +
       '<td><div class="fd-row-inputs">' +
         '<label>映射词<input class="fd-input" style="max-width:200px;" data-m="word" value="' + escAttr(it.body_food) + '" placeholder="留空=纯游戏道具"></label>' +
-        '<button class="fd-btn fd-btn-sm" onclick="openPickerByRow(this)">📖 选词</button>' +
+        '<button class="fd-btn fd-btn-sm fd-btn-pick fd-float-keep" onclick="openPickerByRow(this)">📖 选词</button>' +
         '<label>类型<select class="fd-select" data-m="kind">' + kindSel + "</select></label>" +
         '<label>克数<input class="fd-input fd-input-w" data-m="grams" type="number" min="0" max="3000" value="' + (it.body_grams > 0 ? Number(it.body_grams) : "") + '" placeholder="默认"></label>' +
         '<span class="fd-valid" data-m="vmark">' + vHtml + "</span>" +
       "</div></td>" +
       '<td><div class="fd-actions">' +
         '<button class="fd-btn fd-btn-sm fd-btn-primary" onclick="saveMapRow(' + it.item_id + ', this)">保存映射</button>' +
-        '<button class="fd-btn fd-btn-sm" onclick="openEdit(' + it.item_id + ', this)">✏️ 完整编辑</button>' +
+        '<button class="fd-btn fd-btn-sm fd-float-keep" onclick="openEdit(' + it.item_id + ', this)">✏️ 完整编辑</button>' +
         (it.body_food ? '<button class="fd-btn fd-btn-sm fd-btn-danger" onclick="clearRow(' + it.item_id + ', this)">解除</button>' : "") +
       "</div></td></tr>";
   }
@@ -558,25 +558,41 @@
       });
   };
 
-  // ---- ✏️ 完整编辑（行内展开面板，插在触发行下面——不再用 fixed 弹窗） ----
+  // ---- 悬浮卡片通用：absolute 定位到触发元素下方 ----------
+  function placeCard(card, anchor) {
+    document.body.appendChild(card);
+    card.style.top = "0px";
+    card.style.left = "0px";
+    var aw = card.offsetWidth || 880;
+    var r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : null;
+    var left = r ? (r.left + (window.pageXOffset || 0)) : 16;
+    var top = r ? (r.bottom + (window.pageYOffset || 0) + 8) : 120;
+    var vw = document.documentElement.clientWidth || 1200;
+    card.style.left = Math.max(16, Math.min(left, vw - aw - 20)) + "px";
+    card.style.top = Math.max(8, top) + "px";
+    card.scrollIntoView({ block: "nearest" });
+  }
+
   function closeInlinePanels() {
-    Array.prototype.forEach.call(document.querySelectorAll(".fd-inline-row"), function (el) { el.remove(); });
-    // 选词面板送回停泊区
+    Array.prototype.forEach.call(document.querySelectorAll(".fd-float-card"), function (el) { el.remove(); });
     var holder = $("picker-panel-holder");
     if (holder && pickerPanel.parentNode !== holder) holder.appendChild(pickerPanel);
+    pickerTargetInput = null;
   }
   window.closeInlinePanels = closeInlinePanels;
+
+  // ---- ✏️ 完整编辑（悬浮卡片） ----
 
   window.openEdit = function (itemId, btn) {
     closeInlinePanels();
     var it = findItem(itemId);
     if (!it) { showBanner("道具数据不存在", "err"); return; }
     editId = itemId;
-    var tr = btn ? btn.closest("tr") : null;
-    var row = document.createElement("tr");
-    row.className = "fd-inline-row";
-    row.innerHTML =
-      '<td colspan="3" class="fd-inline-cell"><div class="fd-inline-panel">' +
+    var card = document.createElement("div");
+    card.className = "fd-float-card";
+    card.id = "edit-card";
+    card.innerHTML =
+      "<div>" +
       '<div class="fd-panel-head"><b>✏️ 编辑道具完整信息</b><span class="fd-scope-tag">' + scopeTag(it) + "</span>" +
         '<button class="fd-btn fd-btn-sm" style="margin-left:auto;" onclick="closeInlinePanels()">关闭</button></div>' +
       '<div class="fd-edit-grid">' +
@@ -585,7 +601,7 @@
         '<div class="fd-field"><label>饱食度（可负）</label><input class="fd-input fd-input-n" data-e="sat" type="number" step="0.1" value="' + Number(it.satiety_bonus) + '"></div>' +
         '<div class="fd-field"><label>emoji</label><input class="fd-input fd-input-n" data-e="emoji" maxlength="8" value="' + escAttr(it.emoji) + '"></div>' +
         '<div class="fd-field" style="grid-column: 1 / -1;"><label>描述</label><input class="fd-input" data-e="desc" maxlength="100" value="' + escAttr(it.description) + '"></div>' +
-        '<div class="fd-field" style="grid-column: 1 / -1;"><label>映射食物词（留空 = 普通道具；填词 = 联动道具，可自由切换）</label><div style="display:flex; gap:8px;"><input class="fd-input" data-e="word" value="' + escAttr(it.body_food) + '" placeholder="蛋糕 或 米饭,猪肉,青菜"><button class="fd-btn fd-btn-sm" onclick="openPickerByPanel(this)">📖 选词</button></div></div>' +
+        '<div class="fd-field" style="grid-column: 1 / -1;"><label>映射食物词（留空 = 普通道具；填词 = 联动道具，可自由切换）</label><div style="display:flex; gap:8px;"><input class="fd-input" data-e="word" value="' + escAttr(it.body_food) + '" placeholder="蛋糕 或 米饭,猪肉,青菜"><button class="fd-btn fd-btn-sm fd-btn-pick fd-float-keep" onclick="openPickerByPanel(this)">📖 选词</button></div></div>' +
         '<div class="fd-field"><label>类型</label><select class="fd-select" data-e="kind">' +
           [["snack", "食物"], ["drink", "饮品"], ["meal", "整桌饭"]].map(function (kv) { return '<option value="' + kv[0] + '"' + (kv[0] === (it.body_kind || "snack") ? " selected" : "") + ">" + kv[1] + "</option>"; }).join("") +
         "</select></div>" +
@@ -594,15 +610,12 @@
       '<div style="margin-top: 12px; display: flex; gap: 10px; align-items: center;">' +
         '<button class="fd-btn fd-btn-primary" onclick="saveEdit()">保存全部</button>' +
         '<span class="fd-hint" style="margin: 0;">普通 ↔ 联动 自由切换：清空映射词保存 = 恢复普通道具</span>' +
-      "</div></div></td>";
-    if (tr && tr.parentNode) tr.after(row);
-    else $("shop-wrap").appendChild(row);
-    row.scrollIntoView({ block: "nearest" });
+      "</div></div>";
+    placeCard(card, btn);
   };
 
   window.saveEdit = function () {
-    var panel = document.querySelector(".fd-inline-row [data-e='name']");
-    var container = panel ? panel.closest(".fd-inline-panel") : null;
+    var container = document.getElementById("edit-card");
     function e(name) {
       var el = container.querySelector('[data-e="' + name + '"]');
       return el ? el.value : "";
@@ -682,31 +695,28 @@
   // ---- 📖 选词面板（唯一实体，DOM 移动到触发位置；多选高亮） ----
   // pickerPanel 实体已在 IIFE 顶部绑定（var pickerPanel = $("picker-panel")）
 
-  function openPickerPanel(targetInput) {
+  function openPickerPanel(anchorEl, targetInput) {
     closeInlinePanels();
     pickerTargetInput = targetInput || null;
     pickerSel = splitWords(pickerTargetInput ? pickerTargetInput.value : "");
     pickerGroup = "";
     $("picker-search").value = "";
-    var holder = document.createElement("div");
-    holder.className = "fd-picker-holder";
-    holder.appendChild(pickerPanel);
-    if (pickerTargetInput && pickerTargetInput.parentNode) {
-      pickerTargetInput.parentNode.insertBefore(holder, pickerTargetInput.parentNode.firstChild);
-    } else {
-      $("shop-wrap").appendChild(holder);
-    }
+    placeCard(pickerPanel, anchorEl || targetInput);
     renderPickerChips();
     renderPickerGrid();
     renderPickerSel();
-    holder.scrollIntoView({ block: "nearest" });
   }
 
   window.openPickerByRow = function (btn) {
     var inputs = btn.closest(".fd-row-inputs").querySelectorAll("input");
-    openPickerPanel(inputs.length ? inputs[inputs.length - 1] : btn);
+    openPickerPanel(btn, inputs.length ? inputs[inputs.length - 1] : null);
   };
-  window.openPickerById = function (id) { openPickerPanel($(id)); };
+  window.openPickerById = function (id) { var el = $(id); openPickerPanel(el, el); };
+  window.openPickerByPanel = function (btn) {
+    var field = btn.closest(".fd-field");
+    var input = field ? field.querySelector('[data-e="word"]') : null;
+    openPickerPanel(btn, input);
+  };
 
   function closePicker() {
     var holder = $("picker-panel-holder");
@@ -796,6 +806,10 @@
     if (chip) { pickerGroup = chip.getAttribute("data-g"); renderPickerChips(); renderPickerGrid(); return; }
     var food = ev.target.closest ? ev.target.closest(".fd-food[data-word]") : null;
     if (food) { pickerToggleWord(food.getAttribute("data-word")); return; }
+    // 点击浮层外部关闭（触发按钮豁免，避免「开→立刻被关」）
+    if (!ev.target.closest || !ev.target.closest(".fd-float-card, .fd-float-keep")) {
+      if (document.querySelector(".fd-float-card")) closeInlinePanels();
+    }
   });
 
   function fillDatalist() {
