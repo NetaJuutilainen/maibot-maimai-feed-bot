@@ -67,6 +67,7 @@
   .fd-input { width: 100%; }
   .fd-input-sm { width: 150px; }
   .fd-input-n { width: 100px; }
+  .fd-input-w { width: 150px; }
   .fd-btn { padding: 7px 14px; border-radius: 9px; border: 1px solid var(--fd-border); background: var(--fd-surface); color: var(--fd-fg); font-size: 14px; cursor: pointer; font-family: inherit; }
   .fd-btn:hover:not(:disabled) { background: var(--fd-soft); }
   .fd-btn:disabled { opacity: 0.5; cursor: wait; }
@@ -184,9 +185,9 @@
       <div class="fd-field"><label>emoji</label><input class="fd-input fd-input-n" id="new-emoji" maxlength="8" placeholder="🍰"></div>
       <div class="fd-field"><label>饱食度（可负）</label><input class="fd-input fd-input-n" id="new-sat" type="number" step="0.1" value="10"></div>
       <div class="fd-field fd-span-4"><label>描述</label><input class="fd-input" id="new-desc" maxlength="100" placeholder="软软的小蛋糕"></div>
-      <div class="fd-field fd-span-2"><label>映射食物词（可组合 = 定食；推荐克数见联动区说明）</label><input class="fd-input" id="new-word" list="food-datalist" placeholder="点右侧 📖 选词，或直接写：蛋糕 / 米饭,猪肉,青菜"></div>
+      <div class="fd-field fd-span-2"><label>映射食物词（可组合 = 定食；推荐克数见联动区说明）</label><div style="display:flex; gap:8px;"><input class="fd-input" id="new-word" list="food-datalist" placeholder="点右侧 📖 选词，或直接写：蛋糕 / 米饭,猪肉,青菜"><button class="fd-btn" onclick="openPickerById('new-word')">📖 选词</button></div></div>
       <div class="fd-field"><label>类型</label><select class="fd-select" id="new-kind"><option value="snack">食物</option><option value="drink">饮品</option><option value="meal">整桌饭</option></select></div>
-      <div class="fd-field"><label>每份克数（可选）</label><input class="fd-input fd-input-n" id="new-grams" type="number" min="0" max="3000" placeholder="留空=默认"></div>
+      <div class="fd-field"><label>每份克数（可选）</label><input class="fd-input fd-input-w" id="new-grams" type="number" min="0" max="3000" placeholder="留空=默认"></div>
     </div>
     <div style="margin-top: 16px; display: flex; align-items: center; gap: 12px;">
       <button class="fd-btn fd-btn-primary" id="btn-create" onclick="createItem()">建道具 + 绑映射</button>
@@ -402,7 +403,7 @@
         '<label>映射词<input class="fd-input" style="max-width:200px;" data-m="word" value="' + escAttr(it.body_food) + '" placeholder="留空=纯游戏道具"></label>' +
         '<button class="fd-btn fd-btn-sm" onclick="openPickerByRow(this)">📖 选词</button>' +
         '<label>类型<select class="fd-select" data-m="kind">' + kindSel + "</select></label>" +
-        '<label>克数<input class="fd-input fd-input-n" data-m="grams" type="number" min="0" max="3000" value="' + (it.body_grams > 0 ? Number(it.body_grams) : "") + '" placeholder="默认"></label>' +
+        '<label>克数<input class="fd-input fd-input-w" data-m="grams" type="number" min="0" max="3000" value="' + (it.body_grams > 0 ? Number(it.body_grams) : "") + '" placeholder="默认"></label>' +
         '<span class="fd-valid" data-m="vmark">' + vHtml + "</span>" +
       "</div></td>" +
       '<td><div class="fd-actions">' +
@@ -576,7 +577,8 @@
     row.className = "fd-inline-row";
     row.innerHTML =
       '<td colspan="3" class="fd-inline-cell"><div class="fd-inline-panel">' +
-      '<div class="fd-panel-head"><b>✏️ 编辑道具完整信息</b><span class="fd-scope-tag">' + scopeTag(it) + "</span></div>" +
+      '<div class="fd-panel-head"><b>✏️ 编辑道具完整信息</b><span class="fd-scope-tag">' + scopeTag(it) + "</span>" +
+        '<button class="fd-btn fd-btn-sm" style="margin-left:auto;" onclick="closeInlinePanels()">关闭</button></div>' +
       '<div class="fd-edit-grid">' +
         '<div class="fd-field"><label>道具名（改名会查重）</label><input class="fd-input" data-e="name" maxlength="40" value="' + escAttr(it.name) + '"></div>' +
         '<div class="fd-field"><label>价格（积分）</label><input class="fd-input fd-input-n" data-e="price" type="number" min="0" value="' + it.price + '"></div>' +
@@ -587,7 +589,7 @@
         '<div class="fd-field"><label>类型</label><select class="fd-select" data-e="kind">' +
           [["snack", "食物"], ["drink", "饮品"], ["meal", "整桌饭"]].map(function (kv) { return '<option value="' + kv[0] + '"' + (kv[0] === (it.body_kind || "snack") ? " selected" : "") + ">" + kv[1] + "</option>"; }).join("") +
         "</select></div>" +
-        '<div class="fd-field"><label>每份克数（可选）</label><input class="fd-input fd-input-n" data-e="grams" type="number" min="0" max="3000" value="' + (it.body_grams > 0 ? Number(it.body_grams) : "") + '" placeholder="留空=默认"></div>' +
+        '<div class="fd-field"><label>每份克数（可选）</label><input class="fd-input fd-input-w" data-e="grams" type="number" min="0" max="3000" value="' + (it.body_grams > 0 ? Number(it.body_grams) : "") + '" placeholder="留空=默认"></div>' +
       "</div>" +
       '<div style="margin-top: 12px; display: flex; gap: 10px; align-items: center;">' +
         '<button class="fd-btn fd-btn-primary" onclick="saveEdit()">保存全部</button>' +
