@@ -621,7 +621,13 @@ class UserCommandsMixin:
                         stream_id,
                     )
                     return False, "身体BAC拒收", True
-                if pre["status"] == "full" or int(pre.get("take") or 0) <= 0:
+                if pre["status"] == "unrecognized":
+                    # 映射词身体认不出：不阻断投喂，按纯游戏结算，只提示管理员去修映射
+                    self.ctx.logger.warning(
+                        "身体联动：映射词「%s」身体词表认不出，本次按纯游戏结算（请用 /投喂管理 映射列表 检查）",
+                        word,
+                    )
+                elif pre["status"] == "full" or int(pre.get("take") or 0) <= 0:
                     await self.ctx.send.text(
                         "😮‍💨 她的胃已经装不下了，一口都吃不动（道具未消耗）",
                         stream_id,

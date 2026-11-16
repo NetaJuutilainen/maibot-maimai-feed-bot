@@ -708,8 +708,10 @@
   }
 
   window.openPickerByRow = function (btn) {
-    var inputs = btn.closest(".fd-row-inputs").querySelectorAll("input");
-    openPickerPanel(btn, inputs.length ? inputs[inputs.length - 1] : null);
+    var row = btn.closest(".fd-row-inputs");
+    // 必须显式取映射词输入框：行内还有克数 input，取「最后一个 input」会把词写进克数框
+    var input = row ? row.querySelector('[data-m="word"]') : null;
+    openPickerPanel(btn, input);
   };
   window.openPickerById = function (id) { var el = $(id); openPickerPanel(el, el); };
   window.openPickerByPanel = function (btn) {
@@ -918,23 +920,6 @@
   }).catch(function (err) {
     $("shop-wrap").innerHTML = '<div class="fd-loading">桥初始化失败：' + escAttr(err && err.message || err) + "</div>";
   });
-
-  // 临时调试钩子（验收后移除）
-  window.__fdDebug = function () {
-    var g = document.getElementById("picker-grid");
-    var g2 = document.getElementById("picker-panel-holder");
-    return {
-      labels: Object.keys(FOODS.labels).length,
-      groups: Object.keys(FOODS.groups || {}).length,
-      aliases: Object.keys(FOODS.aliases || {}).length,
-      items: ITEMS.length,
-      pickerInHolder: pickerPanel ? pickerPanel.parentNode === g2 : false,
-      pickerAttached: pickerPanel ? !!pickerPanel.parentNode : false,
-      gridChildren: g ? g.childElementCount : -1,
-      gridHTMLHead: JSON.stringify((g ? g.innerHTML : "").slice(0, 80)),
-      gridLog: (window.__gridLog || []).slice(0, 6)
-    };
-  };
 })();
 </script>
 </body>
