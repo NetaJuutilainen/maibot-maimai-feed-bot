@@ -30,7 +30,7 @@ class PluginSectionConfig(PluginConfigBase):
 
     enabled: bool = Field(default=True, description="是否启用投喂插件")
     config_version: str = Field(
-        default="2.0.0",
+        default="2.1.0",
         description="配置版本（由插件自动维护，与插件版本一致）",
         json_schema_extra={"hidden": True, "disabled": True},
     )
@@ -310,6 +310,33 @@ class LinkageConfig(PluginConfigBase):
         default=60.0,
         description="身体食物词表（311 种 + 473 别名）的缓存时长（分钟）",
         json_schema_extra={"label": "词表缓存时长（food_cache_minutes）"},
+    )
+    meal_valence: float = Field(
+        default=10.0,
+        ge=0.0,
+        le=30.0,
+        description=(
+            "投喂成功后给身体的瞬时好心情（body v1.3.0+ 的 valence，6 分钟自衰减）。"
+            "0 = 关闭；只影响情绪曲线，不影响胃容量/血糖等生理数值"
+        ),
+        json_schema_extra={"label": "吃完心情加成（meal_valence）"},
+    )
+    pending_feed_poll_seconds: int = Field(
+        default=300,
+        ge=60,
+        le=3600,
+        description=(
+            "睡眠中投喂的待喂队列检查间隔（秒）。睡着时投喂会先放进保温箱，"
+            "后台按此间隔检查身体是否已真正清醒；默认 300 秒，避免频繁 RPC"
+        ),
+        json_schema_extra={"label": "待喂队列检查间隔（pending_feed_poll_seconds）"},
+    )
+    pending_feed_expire_hours: float = Field(
+        default=8.0,
+        ge=1.0,
+        le=72.0,
+        description="待喂食物超过多少小时仍未送达就退回背包并通知投喂者",
+        json_schema_extra={"label": "待喂过期时长（pending_feed_expire_hours）"},
     )
 
 

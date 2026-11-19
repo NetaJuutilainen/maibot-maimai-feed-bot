@@ -308,6 +308,36 @@ class AsyncDatabase:
             )
             """
         )
+        self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pending_feeds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                record_id INTEGER NOT NULL UNIQUE,
+                user_id TEXT NOT NULL,
+                nickname TEXT NOT NULL DEFAULT '',
+                group_id TEXT NOT NULL DEFAULT '',
+                stream_id TEXT NOT NULL DEFAULT '',
+                item_id INTEGER NOT NULL,
+                item_name TEXT NOT NULL,
+                item_emoji TEXT NOT NULL DEFAULT '',
+                quantity INTEGER NOT NULL DEFAULT 1,
+                body_word TEXT NOT NULL,
+                body_kind TEXT NOT NULL DEFAULT 'snack',
+                body_grams REAL NOT NULL DEFAULT 0,
+                mood_capable INTEGER NOT NULL DEFAULT 0,
+                satiety_added REAL NOT NULL DEFAULT 0,
+                created_at REAL NOT NULL,
+                expire_at REAL NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending'
+            )
+            """
+        )
+        self._db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_pending_feeds_status
+            ON pending_feeds(status, expire_at)
+            """
+        )
 
         # 迁移：添加投喂数量列（批量投喂记录）
         feed_record_columns = {
@@ -574,6 +604,61 @@ class AsyncDatabase:
             """,
             (key, value),
         )
+
+    async def mark_pending_feed(self, pending_id: int, status: str) -> None:
+        """更新待喂状态（done / failed / expired）。"""
+        await self.execute_commit(
+            "UPDATE pending_feeds SET status = ? WHERE id = ?",
+            (status, pending_id),
+        )
+
+    async def refund_pending_feed(self, pending_id: int, status: str) -> bool:
+        """把未送达的待喂道具退回背包，并撤销对应的游戏层饱食度/投喂计数。"""
+        def _refund_tx(cursor: Any) -> bool:
+            cursor.execute(
+                """
+                SELECT user_id, group_id, item_id, quantity, satiety_added, status
+                FROM pending_feeds WHERE id = ?
+                """,
+                (pending_id,),
+            )
+            row = cursor.fetchone()
+            if row is None or row[5] != "pending":
+                return False
+            cursor.execute(
+                "UPDATE pending_feeds SET status = ? WHERE id = ? AND status = 'pending'",
+                (status, pending_id),
+            )
+            if cursor.rowcount != 1:
+                return False
+            uid, group_id, item_id, quantity, satiety_added, _ = row
+            cursor.execute(
+                """
+                INSERT INTO user_inventory (user_id, item_id, quantity)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = quantity + excluded.quantity
+                """,
+                (uid, item_id, quantity),
+            )
+            cursor.execute(
+                """
+                UPDATE feed_groups
+                SET satiety = MAX(0.0, satiety - ?), last_decay_time = ?
+                WHERE group_id = ?
+                """,
+                (satiety_added, time.time(), group_id),
+            )
+            cursor.execute(
+                """
+                UPDATE users
+                SET total_feed_count = MAX(0, total_feed_count - ?)
+                WHERE user_id = ?
+                """,
+                (quantity, uid),
+            )
+            return True
+
+        return bool(await self.run_in_transaction(_refund_tx))
 
     async def apply_satiety_decay_batch(self, decay_rate: float) -> None:
         """批量应用所有群的饱食度衰减（基于时间差），单条 SQL 高效完成。"""

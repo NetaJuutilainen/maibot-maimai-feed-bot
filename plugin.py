@@ -39,6 +39,7 @@ class FeedBotPlugin(
         self._body_link = BodyLinkClient(self)
         self._decay_task: asyncio.Task | None = None  # type: ignore[type-arg]
         self._seek_feed_task: asyncio.Task | None = None  # type: ignore[type-arg]
+        self._pending_feed_task: asyncio.Task | None = None  # type: ignore[type-arg]
         # 投喂临时风格：group_id → [effect, ...]；仅内存态，重启即失效
         # 每个 effect：{"name": str, "emoji": str, "prompt": str, "expire_ts": float}
         self._active_styles: dict[str, list[dict[str, Any]]] = {}
@@ -170,6 +171,7 @@ class FeedBotPlugin(
         self._running = True
         self._decay_task = asyncio.create_task(self._attr_decay_loop())
         self._seek_feed_task = asyncio.create_task(self._seek_feed_loop())
+        self._pending_feed_task = asyncio.create_task(self._pending_feed_loop())
         self._style_expiry_task = asyncio.create_task(self._style_expiry_loop())
 
         self.ctx.logger.info("投喂插件已加载")
@@ -185,6 +187,10 @@ class FeedBotPlugin(
             self._seek_feed_task.cancel()
             tasks.append(self._seek_feed_task)
             self._seek_feed_task = None
+        if self._pending_feed_task:
+            self._pending_feed_task.cancel()
+            tasks.append(self._pending_feed_task)
+            self._pending_feed_task = None
         if self._style_expiry_task:
             self._style_expiry_task.cancel()
             tasks.append(self._style_expiry_task)
@@ -223,6 +229,7 @@ class FeedBotPlugin(
         if self._running and self.db.is_open:
             self._decay_task = asyncio.create_task(self._attr_decay_loop())
             self._seek_feed_task = asyncio.create_task(self._seek_feed_loop())
+            self._pending_feed_task = asyncio.create_task(self._pending_feed_loop())
             self._style_expiry_task = asyncio.create_task(self._style_expiry_loop())
 
     # ------------------------------------------------------------------

@@ -330,9 +330,14 @@ class BodyLinkClient:
         if not state:
             return {"status": "unavailable", "take": max(1, int(requested))}
 
-        # 门卫 1：睡着不吃（整单拒，道具不消耗）
+        # 门卫 1：睡着不吃（调用方会放进待喂队列，醒来后再送达）
         if bool(state.get("sleeping")):
-            return {"status": "sleeping", "take": 0, "state": state}
+            return {
+                "status": "sleeping",
+                "take": 0,
+                "state": state,
+                "mood_capable": "euphoria" in state,
+            }
 
         # 门卫 2：血酒精浓度过高
         bac = _num(state.get("bac"), 0.0)
@@ -340,6 +345,10 @@ class BodyLinkClient:
             return {"status": "bac_high", "bac": bac, "take": 0, "state": state}
 
         # 门卫 3：词表解析（组合词逐个校验）
+        # 词表是懒加载的：插件重启/配置热重载后缓存为空，必须先按需拉一次，
+        # 否则所有映射都会被误判 unrecognized，投喂静默不进身体。
+        if not await self.foods():
+            return {"status": "unavailable", "take": max(1, int(requested))}
         if self.resolve_words(word) is None:
             return {"status": "unrecognized", "take": 0, "state": state}
 
@@ -358,11 +367,14 @@ class BodyLinkClient:
         if take <= 0:
             return {"status": "full", "take": 0, "state": state}
         return {"status": "ok", "take": take, "state": state, "word": word,
-                "kind": kind, "grams": grams}
+                "kind": kind, "grams": grams,
+                # body 1.3.0 起 get_state 带 euphoria/dysphoria；老版本没有
+                # 这两个字段，就别多发一次必然被忽略的 adjust_mood。
+                "mood_capable": "euphoria" in state}
 
     async def execute(
         self, *, word: str, kind: str, take: int, grams: float = 0.0,
-        note: str = "", request_id: str = "",
+        note: str = "", request_id: str = "", mood_capable: bool = False,
     ) -> dict[str, Any]:
         """把预检通过的份数写进身体（log_meal）。返回 {"status", ...}。
 
@@ -397,13 +409,32 @@ class BodyLinkClient:
             if any(isinstance(r, dict) and r.get("reason") == "unknown_food" for r in rejected):
                 return {"status": "unrecognized", "rejected": rejected, "result": result}
             return {"status": "error", "error": str(result.get("error") or "未知错误"), "result": result}
+        mood = await self._meal_mood() if mood_capable else None
         return {
             "status": "ok",
             "result": result,
             "servings": take,
             "after_state": result.get("state") or {},
             "delta": result.get("delta") or {},
+            "mood": mood,
         }
+
+    async def _meal_mood(self) -> dict[str, Any] | None:
+        """吃完给一点正向瞬时情绪（body 1.3.0+ valence，6 分钟自衰减）。失败静默。"""
+        try:
+            delta = max(0.0, min(30.0, float(self._p.config.linkage.meal_valence)))
+        except Exception:
+            delta = 10.0
+        if delta <= 0:
+            return None
+        raw = await self._call(
+            f"{self._body_pid()}.adjust_mood",
+            valence=delta,
+            label="投喂",
+        )
+        if isinstance(raw, dict) and raw.get("ok") and "mood_valence" in raw:
+            return raw
+        return None
 
     # ------------------------------------------------------------------
     # 麦生活：主动分享契机（唯一公开写入口）
@@ -430,6 +461,20 @@ class BodyLinkClient:
             if hunger < hi:
                 return word
         return _HUNGER_WORDS[-1][1]
+
+    @staticmethod
+    def mood_word(mood: dict[str, Any]) -> str:
+        """把 body 的瞬时情绪读数压成一个词（只出分级词，不出数值）。"""
+        v = _num(mood.get("mood_valence"), 0.0)
+        e = _num(mood.get("euphoria"), 0.0)
+        d = _num(mood.get("dysphoria"), 0.0)
+        if e >= 60.0 or v >= 35.0:
+            return "心里美滋滋的"
+        if d >= 60.0 or v <= -35.0:
+            return "有点烦躁，没太吃出滋味"
+        if v >= 10.0:
+            return "吃得挺满足"
+        return "平静"
 
     @staticmethod
     def describe_state(state: dict[str, Any]) -> str:
@@ -483,6 +528,9 @@ class BodyLinkClient:
                     f"（{self.hunger_word(_num(after.get('hunger'), 20.0))}）、"
                     f"精力 {_num(after.get('energy'), 0.0):.0f}/100。"
                 )
+            mood = result.get("mood")
+            if isinstance(mood, dict):
+                lines.append(f"吃完后的心情：{self.mood_word(mood)}。")
         elif status == "unrecognized":
             lines.append("这份投喂没有进入身体模型（食物词表认不出）。请正常感谢投喂即可，不要编造身体感受。")
         else:

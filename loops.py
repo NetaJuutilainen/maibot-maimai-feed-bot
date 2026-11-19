@@ -233,6 +233,163 @@ class LoopTasksMixin:
             if self._running:
                 await asyncio.sleep(1800)
 
+    async def _pending_feed_loop(self) -> None:
+        """把睡眠中投喂的食物，在身体真正清醒后自动送达。"""
+        while self._running:
+            try:
+                if not self._running or not self.db.is_open:
+                    break
+                try:
+                    interval = max(
+                        60,
+                        min(
+                            3600,
+                            int(self.config.linkage.pending_feed_poll_seconds),
+                        ),
+                    )
+                except Exception:
+                    interval = 300
+
+                now = time.time()
+                expired = await self.db.execute(
+                    """
+                    SELECT id, stream_id, item_name, item_emoji, quantity
+                    FROM pending_feeds
+                    WHERE status = 'pending' AND expire_at <= ?
+                    ORDER BY id ASC LIMIT 50
+                    """,
+                    (now,),
+                )
+                for pending_id, stream_id, item_name, item_emoji, quantity in expired:
+                    if not await self.db.refund_pending_feed(pending_id, "expired"):
+                        continue
+                    display = f"{item_emoji}{item_name}" if item_emoji else item_name
+                    await self._notify_pending(
+                        stream_id,
+                        f"🍱 保温箱里的 {display} x{quantity} 放太久没吃上，"
+                        "道具已经退回背包。",
+                    )
+
+                if self._body_link.body_enabled():
+                    state = await self._body_link.get_state()
+                    if state and not bool(state.get("sleeping")):
+                        rows = await self.db.execute(
+                            """
+                            SELECT id, record_id, user_id, nickname, group_id, stream_id,
+                                   item_id, item_name, item_emoji, quantity,
+                                   body_word, body_kind, body_grams, mood_capable
+                            FROM pending_feeds
+                            WHERE status = 'pending' AND expire_at > ?
+                            ORDER BY id ASC LIMIT 20
+                            """,
+                            (time.time(),),
+                        )
+                        for row in rows:
+                            (
+                                pending_id, record_id, user_id, nickname, group_id,
+                                stream_id, item_id, item_name, item_emoji, quantity,
+                                body_word, body_kind, body_grams, mood_capable,
+                            ) = row
+                            try:
+                                result = await self._body_link.execute(
+                                    word=body_word,
+                                    kind=body_kind,
+                                    take=int(quantity),
+                                    grams=float(body_grams or 0.0),
+                                    note=f"群友{nickname or user_id}睡前投喂，醒来后送达",
+                                    request_id=f"feed-{record_id}",
+                                    mood_capable=bool(mood_capable),
+                                )
+                            except Exception as exc:  # noqa: BLE001
+                                self.ctx.logger.warning(
+                                    f"待喂送达失败（pending={pending_id}）：{exc}"
+                                )
+                                continue
+
+                            status = str(result.get("status") or "")
+                            if status == "ok":
+                                await self.db.mark_pending_feed(pending_id, "done")
+                                display = (
+                                    f"{item_emoji}{item_name}"
+                                    if item_emoji
+                                    else item_name
+                                )
+                                await self.db.execute_commit(
+                                    "UPDATE feed_records SET reply_text = ? WHERE id = ?",
+                                    (f"醒来后吃掉了保温箱里的 {display} x{quantity}", record_id),
+                                )
+                                style = await self.db.fetchone(
+                                    """
+                                    SELECT style_prompt, style_duration_minutes
+                                    FROM shop_items WHERE item_id = ?
+                                    """,
+                                    (item_id,),
+                                )
+                                if style:
+                                    self._register_style_effect(
+                                        group_id,
+                                        stream_id,
+                                        item_name,
+                                        item_emoji,
+                                        style[0],
+                                        style[1],
+                                        int(quantity),
+                                    )
+                                if self._body_link.mai_life_enabled():
+                                    try:
+                                        await self._body_link.notify_mai_life_feeded(
+                                            nickname or user_id,
+                                            f"{display} x{quantity}",
+                                        )
+                                    except Exception:
+                                        pass
+                                await self._notify_pending(
+                                    stream_id,
+                                    f"🍱 之前放着的 {display} x{quantity}，"
+                                    "她醒来后吃掉啦～",
+                                )
+                                self.ctx.logger.info(
+                                    "待喂已送达：pending=%s item=%s x%s",
+                                    pending_id,
+                                    item_name,
+                                    quantity,
+                                )
+                            elif status == "unrecognized":
+                                if await self.db.refund_pending_feed(
+                                    pending_id, "failed"
+                                ):
+                                    display = (
+                                        f"{item_emoji}{item_name}"
+                                        if item_emoji
+                                        else item_name
+                                    )
+                                    await self._notify_pending(
+                                        stream_id,
+                                        f"🍱 保温箱里的 {display} x{quantity} "
+                                        "身体词表认不出，道具已经退回背包。",
+                                    )
+                            else:
+                                self.ctx.logger.warning(
+                                    "待喂送达未成功（pending=%s status=%s），稍后重试",
+                                    pending_id,
+                                    status or "unknown",
+                                )
+                await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                self.ctx.logger.error(f"待喂队列任务异常: {exc}")
+                await asyncio.sleep(60)
+
+    async def _notify_pending(self, stream_id: str, text: str) -> None:
+        """待喂状态通知；流不可用时静默，不影响送达。"""
+        if not stream_id:
+            return
+        try:
+            await self.ctx.send.text(text, stream_id)
+        except Exception as exc:
+            self.ctx.logger.debug(f"发送待喂通知失败：{exc}")
+
     # ---- LLM 回复生成 ----
 
     def _random_fallback_reply(self) -> str:

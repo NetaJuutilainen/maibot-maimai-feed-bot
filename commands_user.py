@@ -584,10 +584,12 @@ class UserCommandsMixin:
         uid = self.db.user_key(user_id, group_id)
 
         # ---- 身体预检（省道具模式）：映射道具在扣道具之前先过门卫 ----
-        # 预检拒收（睡着/BAC 超标/胃满/份数为 0）→ 整单礼貌拒绝，道具不消耗；
+        # 预检拒收（BAC 超标/胃满/份数为 0）→ 整单礼貌拒绝，道具不消耗；
+        # 睡着 → 按单次上限收下并进入待喂队列，醒来后自动送达；
         # 通过则 take = 身体实际能接受的份数，事务只扣这么多（剩余份数留在背包）。
         # 预检不可用（身体没装/没开/超时）→ 按纯游戏结算，行为与旧版一致
         body_pre: dict[str, Any] | None = None
+        pending_body: dict[str, Any] | None = None
         if self._body_link.body_enabled():
             try:
                 pre_item = await self.db.find_shop_item(item_name, group_id)
@@ -610,11 +612,23 @@ class UserCommandsMixin:
                     self.ctx.logger.debug(f"身体预检失败，按纯游戏结算: {exc}")
                     pre = {"status": "unavailable", "take": requested_quantity}
                 if pre["status"] == "sleeping":
-                    await self.ctx.send.text(
-                        "🌙 她已经睡着了……这份心意先留着，明天再喂吧（道具未消耗）",
-                        stream_id,
-                    )
-                    return False, "身体睡觉拒收", True
+                    try:
+                        max_servings = max(
+                            int(self.config.linkage.max_servings_per_feed), 1
+                        )
+                    except Exception:
+                        max_servings = 3
+                    pending_take = max(1, min(requested_quantity, max_servings))
+                    pending_body = {
+                        "word": word,
+                        "kind": kind,
+                        "grams": grams,
+                        "mood_capable": bool(pre.get("mood_capable")),
+                    }
+                    body_pre = {
+                        **pending_body,
+                        "take": pending_take,
+                    }
                 if pre["status"] == "bac_high":
                     await self.ctx.send.text(
                         "😵 她已经醉得不省人事了，别再灌啦（道具未消耗）",
@@ -627,7 +641,9 @@ class UserCommandsMixin:
                         "身体联动：映射词「%s」身体词表认不出，本次按纯游戏结算（请用 /投喂管理 映射列表 检查）",
                         word,
                     )
-                elif pre["status"] == "full" or int(pre.get("take") or 0) <= 0:
+                elif pre["status"] != "sleeping" and (
+                    pre["status"] == "full" or int(pre.get("take") or 0) <= 0
+                ):
                     await self.ctx.send.text(
                         "😮‍💨 她的胃已经装不下了，一口都吃不动（道具未消耗）",
                         stream_id,
@@ -639,6 +655,7 @@ class UserCommandsMixin:
                         "word": word,
                         "kind": kind,
                         "grams": grams,
+                        "mood_capable": bool(pre.get("mood_capable")),
                     }
                 # status == unavailable → body_pre 保持 None：映射道具按纯游戏结算
 
@@ -778,6 +795,47 @@ class UserCommandsMixin:
             )
             record_id = cursor.lastrowid
 
+            if pending_body is not None:
+                try:
+                    expire_hours = max(
+                        1.0,
+                        min(
+                            72.0,
+                            float(self.config.linkage.pending_feed_expire_hours),
+                        ),
+                    )
+                except Exception:
+                    expire_hours = 8.0
+                cursor.execute(
+                    """
+                    INSERT INTO pending_feeds (
+                        record_id, user_id, nickname, group_id, stream_id,
+                        item_id, item_name, item_emoji, quantity,
+                        body_word, body_kind, body_grams, mood_capable,
+                        satiety_added, created_at, expire_at, status
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+                    """,
+                    (
+                        record_id,
+                        uid,
+                        nickname,
+                        group_id,
+                        stream_id,
+                        item_id,
+                        name,
+                        emoji,
+                        consumed_quantity,
+                        pending_body["word"],
+                        pending_body["kind"],
+                        pending_body["grams"],
+                        int(bool(pending_body["mood_capable"])),
+                        new_satiety - current_satiety,
+                        now_ts,
+                        now_ts + expire_hours * 3600.0,
+                    ),
+                )
+
             return (
                 "success",
                 consumed_quantity,
@@ -816,6 +874,21 @@ class UserCommandsMixin:
         consumed_quantity = value
         satiety_change = new_satiety - current_satiety
 
+        if pending_body is not None:
+            display_item = f"{emoji}{name}" if emoji else name
+            note = (
+                f"🌙 她现在还在睡（或刚醒、身体还没真正切回清醒），"
+                f"{display_item} x{consumed_quantity} 已先放进保温箱。\n"
+                "等她醒来会自动喂；超过待喂时限还没吃上，道具会退回背包。\n"
+                "（用 /命令 喊她不算叫醒；在群里正常说话，或喊「救命」才有唤醒机会。）"
+            )
+            await self.db.execute_commit(
+                "UPDATE feed_records SET reply_text = ? WHERE id = ?",
+                (note, record_id),
+            )
+            await self.ctx.send.text(note, stream_id)
+            return True, f"待喂{name} x{consumed_quantity}", True
+
         # 吃下带风格效果的道具后，登记临时说话风格（多效果并存，时长按投喂数量叠加）
         style_note = ""
         if consumed_quantity > 0:
@@ -842,7 +915,7 @@ class UserCommandsMixin:
         body_result: dict[str, Any] | None = None
         body_line = ""
         body_prompt = ""
-        if consumed_quantity > 0 and body_pre is not None:
+        if consumed_quantity > 0 and body_pre is not None and pending_body is None:
             try:
                 body_result = await self._body_link.execute(
                     word=body_pre["word"],
@@ -851,6 +924,7 @@ class UserCommandsMixin:
                     grams=body_pre["grams"],
                     note=f"群友{nickname or user_id}投喂",
                     request_id=f"feed-{record_id}",
+                    mood_capable=bool(body_pre.get("mood_capable")),
                 )
             except Exception as exc:  # noqa: BLE001 — 联动失败绝不打断投喂主流程
                 body_result = {"status": "error", "error": str(exc)}
