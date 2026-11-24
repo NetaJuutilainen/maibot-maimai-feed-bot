@@ -43,6 +43,30 @@ def atomic_write(path: str, mode: str = "w", encoding: str | None = None):
         raise
 
 
+_OUTER_QUOTE_PAIRS = (('"', '"'), ("'", "'"), ("“", "”"), ("‘", "’"))
+
+
+def strip_outer_quotes(text: str) -> str:
+    """剥除首尾成对的外层引号（保留正文内部的引号）。"""
+    s = str(text or "").strip()
+    while len(s) >= 2:
+        stripped = False
+        for left, right in _OUTER_QUOTE_PAIRS:
+            if s.startswith(left) and s.endswith(right):
+                inner = s[1:-1]
+                # 对称引号（" / '）若正文内部也出现同一引号，多为并列分段引用，不盲目剥除
+                if left == right and left in inner:
+                    break
+                if left != right and inner.count(left) != inner.count(right):
+                    break
+                s = inner.strip()
+                stripped = True
+                break
+        if not stripped:
+            break
+    return s
+
+
 def is_likely_emoji(text: str) -> bool:
     """判断文本是否可能是单个 emoji 或 emoji 序列。"""
     if not text or text.isascii():

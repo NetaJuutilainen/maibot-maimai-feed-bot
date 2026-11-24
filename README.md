@@ -10,7 +10,7 @@
 
   <!-- Badges -->
   <p>
-    <img src="https://img.shields.io/badge/Version-2.1.0-ea580c?style=flat-square&labelColor=1e293b" alt="Version 2.1.0">
+    <img src="https://img.shields.io/badge/Version-2.1.1-ea580c?style=flat-square&labelColor=1e293b" alt="Version 2.1.1">
     <img src="https://img.shields.io/badge/MaiBot-%3E%3D1.0.0-f59e0b?style=flat-square&labelColor=1e293b" alt="MaiBot >= 1.0.0">
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-22c55e?style=flat-square&labelColor=1e293b" alt="License: MIT"></a>
     <img src="https://img.shields.io/github/stars/NetaJuutilainen/maibot-maimai-feed-bot?label=Stars&color=eab308&style=flat-square&labelColor=1e293b" alt="Stars">
@@ -20,7 +20,7 @@
   <p>
     MaiBot 投喂插件 —— <b>签到积分</b> · <b>全局 / 群内双层商店</b> · <b>投喂临时说话风格</b> · <b>定时求投喂</b><br/>
     支持按群隔离数据、自定义商品饱食度与签到积分，可选联动 <b>麦麦身体</b> 与 <b>麦生活</b><br/>
-    <sub>基于 <a href="https://github.com/pan-ice/feed-bot">pan-ice/feed-bot</a>（MIT）v1.3.0 改造增强 · 当前版本 <b>2.1.0</b></sub>
+    <sub>基于 <a href="https://github.com/pan-ice/feed-bot">pan-ice/feed-bot</a>（MIT）v1.3.0 改造增强 · 当前版本 <b>2.1.1</b></sub>
   </p>
 
   <!-- Quick Navigation -->
@@ -318,7 +318,7 @@ flowchart TD
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `enabled` | bool | `true` | 是否启用投喂插件 |
-| `config_version` | string | `"2.1.0"` | 配置版本号，与插件版本保持一致 |
+| `config_version` | string | `"2.1.1"` | 配置版本号，与插件版本保持一致 |
 
 #### `[admin]` 管理员
 

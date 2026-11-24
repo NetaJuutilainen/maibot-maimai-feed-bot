@@ -12,7 +12,8 @@ from typing import Any
 
 from maibot_sdk import API
 
-from .utils import PLUGIN_DIR
+from .config import STYLE_CLEAR_ALL_MARKER
+from .utils import PLUGIN_DIR, strip_outer_quotes
 
 _BODY_KINDS = ("meal", "snack", "drink")
 
@@ -29,7 +30,8 @@ class WebUIApiMixin:
         rows = await self.db.execute(
             """
             SELECT item_id, name, emoji, price, description, satiety_bonus,
-                   scope, group_id, body_food, body_kind, body_grams, is_on_sale
+                   scope, group_id, body_food, body_kind, body_grams, is_on_sale,
+                   style_prompt, style_duration_minutes
             FROM shop_items
             WHERE is_on_sale = 1 OR body_food != ''
             ORDER BY scope DESC, name
@@ -60,6 +62,9 @@ class WebUIApiMixin:
                     "body_kind": str(row[9] or "").strip() or "snack",
                     "body_grams": float(row[10] or 0.0),
                     "is_on_sale": int(row[11] or 0),
+                    "style_prompt": str(row[12] or ""),
+                    "style_duration_minutes": int(row[13] or 0),
+                    "is_clear_style": str(row[12] or "") == STYLE_CLEAR_ALL_MARKER,
                     "valid": valid,
                 }
             )
@@ -342,17 +347,23 @@ class WebUIApiMixin:
         body_food: str = "",
         body_kind: str = "",
         body_grams: float = 0.0,
+        style_mode: str = "",
+        style_prompt: str = "",
+        style_duration_minutes: int = 0,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """整行保存：道具完整信息 + 身体映射一次写入（改名带同名查重）。"""
+        """整行保存：道具完整信息 + 身体映射 + 投喂风格一次写入（改名带同名查重）。"""
         del kwargs
         item_id = int(item_id or 0)
         row = await self.db.fetchone(
-            "SELECT name, scope, group_id FROM shop_items WHERE item_id = ?", (item_id,)
+            "SELECT name, scope, group_id, style_prompt, style_duration_minutes FROM shop_items WHERE item_id = ?",
+            (item_id,),
         )
         if row is None:
             return {"ok": False, "error": f"道具不存在（item_id={item_id}）"}
         old_name, scope, group_id = str(row[0]), str(row[1]), str(row[2])
+        old_style_prompt = str(row[3] or "")
+        old_style_dur = int(row[4] or 0)
 
         name = str(item_name or "").strip() or old_name
         if len(name) > 40:
@@ -376,7 +387,7 @@ class WebUIApiMixin:
         except (TypeError, ValueError):
             return {"ok": False, "error": "饱食度必须是数字"}
         emoji = str(emoji or "").strip()[:8]
-        desc = str(description or "").strip()[:100]
+        desc = strip_outer_quotes(str(description or ""))[:100]
         word = str(body_food or "").strip()
         kind = str(body_kind or "").strip().lower() or "snack"
         if kind not in _BODY_KINDS:
@@ -395,14 +406,21 @@ class WebUIApiMixin:
             if keys and self._body_link._foods:
                 labels = [self._body_link._foods["labels"].get(k, k) for k in keys]
 
+        new_style_prompt, new_style_dur, style_err = self._parse_style_fields(
+            style_mode, style_prompt, style_duration_minutes, old_style_prompt, old_style_dur
+        )
+        if style_err:
+            return {"ok": False, "error": style_err}
+
         await self.db.execute_commit(
             """
             UPDATE shop_items
             SET name = ?, price = ?, satiety_bonus = ?, emoji = ?, description = ?,
-                body_food = ?, body_kind = ?, body_grams = ?
+                body_food = ?, body_kind = ?, body_grams = ?,
+                style_prompt = ?, style_duration_minutes = ?
             WHERE item_id = ?
             """,
-            (name, price, sat, emoji, desc, word, kind, grams, item_id),
+            (name, price, sat, emoji, desc, word, kind, grams, new_style_prompt, new_style_dur, item_id),
         )
         return {
             "ok": True,
@@ -434,6 +452,31 @@ class WebUIApiMixin:
         )
         return {"ok": True, "item_id": item_id, "is_on_sale": on_sale}
 
+    @staticmethod
+    def _parse_style_fields(
+        style_mode: str,
+        style_prompt: str,
+        style_duration_minutes: int,
+        fallback_prompt: str = "",
+        fallback_dur: int = 0,
+    ) -> tuple[str, int, str]:
+        """统一解析并规范化道具的投喂风格参数。"""
+        mode = str(style_mode or "").strip().lower()
+        if mode == "none":
+            return "", 0, ""
+        if mode == "clear":
+            return STYLE_CLEAR_ALL_MARKER, 0, ""
+        if mode == "style":
+            prompt = strip_outer_quotes(str(style_prompt or ""))[:500]
+            if not prompt:
+                return "", 0, "注入风格文案不能为空"
+            try:
+                dur = max(0, min(int(style_duration_minutes or 0), 525600))
+            except (TypeError, ValueError):
+                return "", 0, "风格持续时长必须是整数（分钟）"
+            return prompt, dur, ""
+        return fallback_prompt, fallback_dur, ""
+
     @API("webui_item_create", description="WebUI：一键新建联动道具（上架+映射一步完成，可指定群）", version="1")
     async def webui_item_create(
         self,
@@ -445,11 +488,14 @@ class WebUIApiMixin:
         body_food: str = "",
         body_kind: str = "",
         body_grams: float = 0.0,
+        style_mode: str = "",
+        style_prompt: str = "",
+        style_duration_minutes: int = 0,
         scope: str = "global",
         group_id: str = "",
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """新建道具并（可选）同时写入身体映射。scope='global' 或 'group'（需 group_id）。"""
+        """新建道具并（可选）同时写入投喂风格与身体映射。scope='global' 或 'group'（需 group_id）。"""
         del kwargs
         name = str(item_name or "").strip()
         if not name:
@@ -467,7 +513,7 @@ class WebUIApiMixin:
         except (TypeError, ValueError):
             return {"ok": False, "error": "饱食度必须是数字"}
         emoji = str(emoji or "").strip()[:8]
-        desc = str(description or "").strip()[:100]
+        desc = strip_outer_quotes(str(description or ""))[:100]
         word = str(body_food or "").strip()
         kind = str(body_kind or "").strip().lower() or "snack"
         if kind not in _BODY_KINDS:
@@ -476,6 +522,12 @@ class WebUIApiMixin:
             grams = max(0.0, min(float(body_grams or 0.0), 3000.0))
         except (TypeError, ValueError):
             grams = 0.0
+
+        new_style_prompt, new_style_dur, style_err = self._parse_style_fields(
+            style_mode, style_prompt, style_duration_minutes
+        )
+        if style_err:
+            return {"ok": False, "error": style_err}
 
         scope = str(scope or "global").strip()
         gid = str(group_id or "").strip()
@@ -500,10 +552,11 @@ class WebUIApiMixin:
         await self.db.execute_commit(
             """
             INSERT INTO shop_items (name, emoji, description, price, scope, group_id,
-                                    is_on_sale, satiety_bonus, created_by, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, 1, ?, 'webui', ?)
+                                    is_on_sale, satiety_bonus, style_prompt, style_duration_minutes,
+                                    created_by, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 'webui', ?)
             """,
-            (name, emoji, desc, price, scope, gid, sat, time.time()),
+            (name, emoji, desc, price, scope, gid, sat, new_style_prompt, new_style_dur, time.time()),
         )
         id_row = await self.db.fetchone(
             "SELECT item_id FROM shop_items WHERE name = ? AND scope = ? AND group_id = ? AND is_on_sale = 1",

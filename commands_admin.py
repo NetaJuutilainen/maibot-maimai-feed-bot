@@ -16,7 +16,7 @@ from .config import (
     STYLE_CLEAR_ALL_MARKER,
 )
 from .db import AsyncDatabase
-from .utils import is_likely_emoji
+from .utils import is_likely_emoji, strip_outer_quotes
 
 SET_SIGN_POINTS_COMMAND_PATTERN = r"^/投喂管理\s+签到积分(?:\s+(?P<value>.*))?$"
 
@@ -85,7 +85,7 @@ class AdminCommandsMixin:
                     desc = tokens[1].strip() if len(tokens) > 1 else ""
                 else:
                     desc = rest
-        return satiety_bonus, emoji, desc
+        return satiety_bonus, emoji, strip_outer_quotes(desc)
 
     # ---- Bot管理员命令 ----
 
@@ -281,7 +281,7 @@ class AdminCommandsMixin:
 
         item_name = str(matched_groups.get("item_name") or "").strip()
         duration_str = str(matched_groups.get("duration") or "").strip()
-        style_prompt = str(matched_groups.get("style_prompt") or "").strip()
+        style_prompt = strip_outer_quotes(str(matched_groups.get("style_prompt") or ""))
 
         if not item_name or not duration_str or not style_prompt:
             await self.ctx.send.text(
@@ -383,7 +383,7 @@ class AdminCommandsMixin:
 
         item_name = str(matched_groups.get("item_name") or "").strip()
         duration_str = str(matched_groups.get("duration") or "").strip()
-        style_prompt = str(matched_groups.get("style_prompt") or "").strip()
+        style_prompt = strip_outer_quotes(str(matched_groups.get("style_prompt") or ""))
 
         if not item_name or not duration_str or not style_prompt:
             await self.ctx.send.text(

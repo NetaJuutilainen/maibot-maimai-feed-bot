@@ -13,6 +13,7 @@ import time
 from .config import BUILTIN_CLEAR_ITEM_DESC, BUILTIN_CLEAR_ITEM_EMOJI, BUILTIN_CLEAR_ITEM_NAME
 from .config import BUILTIN_CLEAR_ITEM_PRICE, BUILTIN_CLEAR_ITEM_SATIETY, FeedBotConfig
 from .config import STYLE_CLEAR_ALL_MARKER
+from .utils import strip_outer_quotes
 
 _GROUP_ENABLED_MIGRATION_KEY = "group_enabled_authorization_v1"
 
@@ -415,6 +416,29 @@ class AsyncDatabase:
             )
         except sqlite3.OperationalError:
             pass  # 列已存在
+
+        self._normalize_item_outer_quotes()
+
+    def _normalize_item_outer_quotes(self) -> None:
+        """清理存量道具描述与风格文案首尾成对的外层引号，保持展示风格统一。"""
+        assert self._db is not None
+        rows = self._db.execute(
+            "SELECT item_id, description, style_prompt FROM shop_items"
+        ).fetchall()
+        for item_id, desc, sp in rows:
+            old_desc = str(desc or "")
+            old_sp = str(sp or "")
+            new_desc = strip_outer_quotes(old_desc)
+            new_sp = (
+                old_sp
+                if old_sp == STYLE_CLEAR_ALL_MARKER
+                else strip_outer_quotes(old_sp)
+            )
+            if new_desc != old_desc or new_sp != old_sp:
+                self._db.execute(
+                    "UPDATE shop_items SET description = ?, style_prompt = ? WHERE item_id = ?",
+                    (new_desc, new_sp, item_id),
+                )
 
     def _migrate_group_enabled_authorization(self) -> None:
         """一次性将旧版 enabled 占位值迁移为真实群授权状态。"""

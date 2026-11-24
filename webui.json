@@ -50,7 +50,10 @@
             "description": {"type": "string", "required": false, "max_length": 400},
             "body_food": {"type": "string", "required": false, "max_length": 200},
             "body_kind": {"type": "string", "required": false, "max_length": 20},
-            "body_grams": {"type": "number", "required": false, "minimum": 0, "maximum": 3000}
+            "body_grams": {"type": "number", "required": false, "minimum": 0, "maximum": 3000},
+            "style_mode": {"type": "string", "required": false, "max_length": 20},
+            "style_prompt": {"type": "string", "required": false, "max_length": 500},
+            "style_duration_minutes": {"type": "integer", "required": false, "minimum": 0, "maximum": 525600}
           }
         },
         "item_toggle_sale": {
@@ -73,6 +76,9 @@
             "body_food": {"type": "string", "required": false, "max_length": 200},
             "body_kind": {"type": "string", "required": false, "max_length": 20},
             "body_grams": {"type": "number", "required": false, "minimum": 0, "maximum": 3000},
+            "style_mode": {"type": "string", "required": false, "max_length": 20},
+            "style_prompt": {"type": "string", "required": false, "max_length": 500},
+            "style_duration_minutes": {"type": "integer", "required": false, "minimum": 0, "maximum": 525600},
             "scope": {"type": "string", "required": false, "max_length": 20},
             "group_id": {"type": "string", "required": false, "max_length": 40}
           }
