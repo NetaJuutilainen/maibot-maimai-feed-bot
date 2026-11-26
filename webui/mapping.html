@@ -424,9 +424,10 @@
     var pills = [];
     var st = ov.body_state;
     if (ov.body_enabled && st) {
+      var fullness = Math.max(0, Math.min(100, 100 - Number(st.hunger || 0)));
       pills.push('<span class="fd-pill' + (st.sleeping ? " warn" : " ok") + '">' +
         (st.sleeping ? "🌙 睡梦中" : "清醒") + " · 胃 " + Number(st.gastric_volume_ml || 0).toFixed(0) + "mL · 血糖 " +
-        Number(st.glucose || 0).toFixed(1) + " · 饥饿 " + Number(st.hunger || 0).toFixed(0) + "/100</span>");
+        Number(st.glucose || 0).toFixed(1) + " · 饱腹 " + fullness.toFixed(0) + "/100</span>");
     } else {
       pills.push('<span class="fd-pill warn">身体联动未开启（config [linkage]）</span>');
     }

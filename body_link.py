@@ -10,17 +10,29 @@
 
 from __future__ import annotations
 
+import math
 import re
 import time
 from typing import Any
 
-# 身体体感饥饿的分档词（对齐 body/translate.py 的阈值，用于文案）
+# 身体体感饥饿的分档词（对齐 body/translate.py FEELING_LEVELS["hunger"]，用于兼容性）
 _HUNGER_WORDS: tuple[tuple[float, str], ...] = (
     (10.0, "不饿"),
     (30.0, "有点想吃东西"),
     (55.0, "饿了"),
     (75.0, "很饿"),
     (float("inf"), "饿到不行"),
+)
+
+# 身体饱腹度分档词（入参仍为 body 原生 hunger 值：低=饱、高=饿；
+# 对齐 body/translate.py FEELING_DISPLAY["hunger"]，首档保留「不饿」以兼容空胃期）
+_FULLNESS_WORDS: tuple[tuple[float, str], ...] = (
+    (10.0, "不饿"),
+    (30.0, "挺饱的"),
+    (55.0, "不太饿"),
+    (75.0, "有点想吃"),
+    (90.0, "饿了"),
+    (float("inf"), "很饿"),
 )
 
 # 身体胃容量硬上限（body 引擎 engine.py 内 feed 的 min(1500, ...)）
@@ -31,9 +43,10 @@ _BODY_KINDS = ("meal", "snack", "drink")
 
 def _num(value: Any, default: float = 0.0) -> float:
     try:
-        return float(value)
+        v = float(value)
     except (TypeError, ValueError):
         return default
+    return v if math.isfinite(v) else default
 
 
 class BodyLinkClient:
@@ -456,11 +469,26 @@ class BodyLinkClient:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def hunger_word(hunger: float) -> str:
-        for hi, word in _HUNGER_WORDS:
-            if hunger < hi:
+    def _pick_word(table: tuple[tuple[float, str], ...], hunger: float) -> str:
+        val = _num(hunger, 0.0)
+        for hi, word in table:
+            if val < hi:
                 return word
-        return _HUNGER_WORDS[-1][1]
+        return table[-1][1]
+
+    @staticmethod
+    def hunger_word(hunger: float) -> str:
+        return BodyLinkClient._pick_word(_HUNGER_WORDS, hunger)
+
+    @staticmethod
+    def fullness_pct(hunger: float) -> float:
+        """把身体原生 hunger（0=不饿..100=极饿）换算为饱腹度（0..100，高=饱）。"""
+        return max(0.0, min(100.0, 100.0 - _num(hunger, 0.0)))
+
+    @staticmethod
+    def fullness_word(hunger: float) -> str:
+        """根据身体原生 hunger 返回与「饱腹」方向一致的分档词。"""
+        return BodyLinkClient._pick_word(_FULLNESS_WORDS, hunger)
 
     @staticmethod
     def mood_word(mood: dict[str, Any]) -> str:
@@ -484,9 +512,10 @@ class BodyLinkClient:
         glucose = _num(state.get("glucose"), 0.0)
         energy = _num(state.get("energy"), 0.0)
         sleeping = "🌙睡梦中" if bool(state.get("sleeping")) else "清醒"
+        fullness = BodyLinkClient.fullness_pct(hunger)
         return (
             f"🫀 身体（{sleeping}）：胃 {gastric:.0f}/{STOMACH_CAPACITY_ML:.0f}mL，"
-            f"血糖 {glucose:.1f}，饥饿 {hunger:.0f}/100（{BodyLinkClient.hunger_word(hunger)}），"
+            f"血糖 {glucose:.1f}，饱腹 {fullness:.0f}/100（{BodyLinkClient.fullness_word(hunger)}），"
             f"精力 {energy:.0f}/100"
         )
 
@@ -498,9 +527,10 @@ class BodyLinkClient:
             take = int(result.get("servings") or 0)
             extra = ""
             if after:
+                hunger = _num(after.get("hunger"), 0.0)
                 extra = (
                     f"，胃 {_num(after.get('gastric_volume_ml'), 0.0):.0f}mL，"
-                    f"饥饿 {_num(after.get('hunger'), 0.0):.0f}/100"
+                    f"饱腹 {self.fullness_pct(hunger):.0f}/100（{self.fullness_word(hunger)}）"
                 )
             return f"🫀 身体：真的吃下了 x{take}{extra}"
         if status == "unrecognized":
@@ -519,13 +549,14 @@ class BodyLinkClient:
             take = int(result.get("servings") or 0)
             lines.append(f"你真的吃下了其中 {take} 份。")
             if after:
+                hunger = _num(after.get("hunger"), 0.0)
                 lines.append(
                     "吃完后身体状态："
                     f"胃内容物 {_num(after.get('gastric_volume_ml'), 0.0):.0f}mL"
                     f"（容量 {STOMACH_CAPACITY_ML:.0f}mL）、"
                     f"血糖 {_num(after.get('glucose'), 0.0):.1f} mmol/L、"
-                    f"饥饿感 {_num(after.get('hunger'), 0.0):.0f}/100"
-                    f"（{self.hunger_word(_num(after.get('hunger'), 20.0))}）、"
+                    f"饱腹感 {self.fullness_pct(hunger):.0f}/100"
+                    f"（{self.fullness_word(hunger)}）、"
                     f"精力 {_num(after.get('energy'), 0.0):.0f}/100。"
                 )
             mood = result.get("mood")
@@ -550,7 +581,7 @@ class BodyLinkClient:
             if state:
                 hunger = _num(state.get("hunger"), 0.0)
                 parts.append(
-                    f"身体：饥饿感 {hunger:.0f}/100（{self.hunger_word(hunger)}）"
+                    f"身体：饱腹感 {self.fullness_pct(hunger):.0f}/100（{self.fullness_word(hunger)}）"
                     f"、血糖 {_num(state.get('glucose'), 0.0):.1f}、"
                     f"胃 {_num(state.get('gastric_volume_ml'), 0.0):.0f}mL"
                 )
